@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quill — learn-as-you-code editor</title>
+  <meta name="description" content="A browser code editor that supports 20+ languages and teaches you to code with interactive lessons and a live tutor.">
+  <meta name="theme-color" content="#151821">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app" class="loading">
+    <header id="titlebar">
+      <div class="brand" title="Quill">
+        <img src="icon.svg" alt="" width="22" height="22">
+        <span>Quill</span>
+      </div>
+      <nav class="menus" id="menus"></nav>
+      <button id="cmdbox" class="cmdbox" title="Search files and commands">
+        <span class="cmdbox-ic"></span><span class="cmdbox-text">Search files &amp; commands</span><kbd>Ctrl P</kbd>
+      </button>
+      <div class="title-right">
+        <div id="xp" class="xp" title="Your level and XP"></div>
+        <button id="runbtn" class="runbtn" title="Run (Ctrl+Enter)"></button>
+        <div class="layout-btns" id="layoutbtns"></div>
+      </div>
+    </header>
+
+    <div id="main">
+      <nav id="activitybar"></nav>
+      <aside id="sidebar">
+        <section class="view" data-view="files"></section>
+        <section class="view" data-view="search"></section>
+        <section class="view" data-view="learn"></section>
+        <section class="view" data-view="extensions"></section>
+        <section class="view" data-view="settings"></section>
+      </aside>
+      <div class="resizer v" data-resize="sidebar"></div>
+
+      <section id="center">
+        <div id="tabbar"><div id="tabs"></div><div id="tabactions"></div></div>
+        <div id="breadcrumbs"></div>
+        <div id="editorwrap">
+          <div id="editor"></div>
+          <div id="welcome"></div>
+          <div id="editor-loading"><div class="spinner"></div><span>Loading editor…</span></div>
+        </div>
+        <div class="resizer h" data-resize="panel"></div>
+        <section id="panel">
+          <div class="panel-head">
+            <div class="ptabs" id="ptabs"></div>
+            <div class="panel-tools" id="paneltools"></div>
+          </div>
+          <div class="panel-body">
+            <div class="pview" data-pview="console"><div id="console"></div></div>
+            <div class="pview" data-pview="problems"><div id="problems"></div></div>
+          </div>
+        </section>
+      </section>
+
+      <div class="resizer v" data-resize="right"></div>
+      <aside id="right">
+        <div class="rtabs" id="rtabs"></div>
+        <div class="rbody">
+          <div class="rview" data-rview="preview">
+            <div class="preview-bar" id="previewbar"></div>
+            <div class="preview-host" id="previewhost"><iframe id="preview" title="Preview" sandbox="allow-scripts allow-modals allow-forms allow-popups allow-pointer-lock allow-downloads"></iframe></div>
+          </div>
+          <div class="rview" data-rview="lesson"><div id="lesson"></div></div>
+          <div class="rview" data-rview="tutor"><div id="tutor"></div></div>
+        </div>
+      </aside>
+    </div>
+
+    <footer id="statusbar"><div class="sb-left" id="sbleft"></div><div class="sb-right" id="sbright"></div></footer>
+  </div>
+
+  <div id="toasts"></div>
+  <iframe id="checkframe" title="lesson checker" sandbox="allow-scripts allow-same-origin" style="position:absolute;width:800px;height:600px;left:-10000px;top:0;border:0" aria-hidden="true"></iframe>
+
+  <script src="js/util.js"></script>
+  <script src="js/langs.js"></script>
+  <script src="js/themes.js"></script>
+  <script src="js/fs.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/runner.js"></script>
+  <script src="js/tutor-data.js"></script>
+  <script src="js/tutor.js"></script>
+  <script src="js/courses/web.js"></script>
+  <script src="js/courses/javascript.js"></script>
+  <script src="js/courses/python.js"></script>
+  <script src="js/courses/more.js"></script>
+  <script src="js/learn.js"></script>
+  <script src="js/extensions.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
