@@ -447,7 +447,7 @@
     const gl = { log: '›', info: 'i', warn: '!', error: '✕', sys: '' }[type] ?? '›';
     const row = h('div', { class: 'cl ' + type, 'data-t': type, 'data-v': text }, h('span', { class: 'gl', text: gl }), h('span', { class: 'tx', text }));
     if (line && file) row.append(h('span', { class: 'ln', text: `${file.split('/').pop()}:${line}`, onclick: () => (isVirtual(file) ? activate(file) : openFile(file)) || setTimeout(() => editor.reveal(line), 40) }));
-    if (type === 'error') row.append(h('button', { class: 'explain', html: `${icon('bulb', 12)}Explain`, onclick: () => { Q.tutor.explainError(text, lang || langOfId(editor.activeId)); showRight('tutor'); } }));
+    if (type === 'error') row.append(h('button', { class: 'explain', html: `${icon('bulb', 12)}Explain`, onclick: () => { Q.tutor.explainError(text, lang || langOfId(editor.activeId), { line, file }); showRight('tutor'); } }));
     c.append(row); lastLine = row;
     c.parentElement.scrollTop = c.parentElement.scrollHeight;
     ccount++; $('#ccount').textContent = ccount;

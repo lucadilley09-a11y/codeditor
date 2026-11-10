@@ -154,7 +154,7 @@
     // code blocks with data-try get a "Try it" button that inserts into the lesson editor
     d.querySelectorAll('pre').forEach((pre) => {
       if (!pre.hasAttribute('data-try') || !app.virtuals.has(tabId())) return;
-      pre.append(h('button', { class: 'tryit', text: 'Try it', onclick: () => { app.activate(tabId()); app.editor.insert(pre.textContent.replace(/Try it$/, '').trim() + '\n'); } }));
+      pre.append(h('button', { class: 'tryit', text: 'Try it', onclick: () => { app.activate(tabId()); app.editor.insertBelow(pre.textContent.replace(/Try it$/, '').trim()); } }));
     });
     return d;
   }
@@ -275,7 +275,7 @@
       if (r.errors.length) {
         const e = r.errors[0];
         const box = h('div', { class: 'feedback bad', html: `${icon('alert', 16)}<div><b>Your code hit an error${e.line ? ' on line ' + e.line : ''}.</b><br><code>${esc((e.last || e.text).split('\n').pop())}</code></div>` });
-        fb.append(box, Q.tutor.errorHtml(e.text, S.course.lang));
+        fb.append(box, Q.tutor.errorHtml(e.text, S.course.lang, { line: e.line, file: tabId() }));
       } else {
         const msg = typeof res === 'string' ? res : 'Not quite yet — compare your code with the task and try again.';
         fb.append(h('div', { class: 'feedback bad', html: `${icon('close', 16)}<div><b>${pick(['Almost!', 'Not yet.', 'Close!', 'Keep going.'])}</b> ${msg}</div>` }));

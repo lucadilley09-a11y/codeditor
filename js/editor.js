@@ -158,6 +158,17 @@
         const sel = ed.getSelection(); if (!sel) return;
         ed.executeEdits('quill', [{ range: sel, text, forceMoveMarkers: true }]); ed.focus();
       },
+      insertBelow(text) {
+        const m = ed.getModel(); const p = ed.getPosition(); if (!m || !p) return;
+        const line = p.lineNumber; const cur = m.getLineContent(line); const indent = cur.match(/^\s*/)[0] + (/[{:([]\s*$/.test(cur) ? ' '.repeat(Q.app?.settings.tabSize || 2) : '');
+        const body = text.replace(/\n$/, '').split('\n').map((l) => (l ? indent + l : l)).join('\n');
+        const end = m.getLineMaxColumn(line);
+        if (!cur.trim()) ed.executeEdits('quill', [{ range: new monaco.Range(line, 1, line, end), text: body }]);
+        else ed.executeEdits('quill', [{ range: new monaco.Range(line, end, line, end), text: '\n' + body }]);
+        const first = cur.trim() ? line + 1 : line; const lastLine = first + body.split('\n').length - 1;
+        ed.setSelection(new monaco.Range(first, 1, lastLine, m.getLineMaxColumn(lastLine)));
+        ed.revealLineInCenterIfOutsideViewport(lastLine); ed.focus();
+      },
       insertSnippet(snippet) { const c = ed.getContribution('snippetController2'); if (c) c.insert(snippet); else api.insert(snippet); ed.focus(); },
       reveal(line, col = 1) { ed.revealLineInCenter(line); ed.setPosition({ lineNumber: line, column: col }); ed.focus(); },
       selection() { const m = ed.getModel(); const s = ed.getSelection(); return m && s ? m.getValueInRange(s) : ''; },
@@ -380,6 +391,16 @@
       async format() { return false; },
       focus: () => ta.focus(), layout: () => {},
       insert: (text) => ins(text),
+      insertBelow(text) {
+        const v = ta.value, s = ta.selectionStart;
+        const ls = v.lastIndexOf('\n', s - 1) + 1; let le = v.indexOf('\n', s); if (le < 0) le = v.length;
+        const cur = v.slice(ls, le); const indent = cur.match(/^\s*/)[0] + (/[{:([]\s*$/.test(cur) ? ' '.repeat(Q.app?.settings.tabSize || 2) : '');
+        const body = text.replace(/\n$/, '').split('\n').map((l) => (l ? indent + l : l)).join('\n');
+        ta.focus();
+        if (!cur.trim()) { ta.setSelectionRange(ls, le); ins(body); ta.setSelectionRange(ls, ls + body.length); }
+        else { ta.setSelectionRange(le, le); ins('\n' + body); ta.setSelectionRange(le + 1, le + 1 + body.length); }
+        fireCursor();
+      },
       insertSnippet(sn) {
         // strip snippet placeholders: ${1:foo} -> foo, $0/$1 -> cursor
         let cursor = -1; let out = '';

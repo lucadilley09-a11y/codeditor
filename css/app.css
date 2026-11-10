@@ -340,6 +340,14 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg4); paddi
 .tcard.err { border-color: color-mix(in srgb, var(--bad) 40%, var(--border)); }
 .tcard.err .tk code { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .tcard.pattern .tk code { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 12%, transparent); }
+.ttip { display: flex; gap: 8px; color: var(--text2); margin-bottom: 10px; font-size: 12.5px; line-height: 1.5; }
+.ttip .ic { color: var(--warn); margin-top: 2px; }
+.tlesson { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 8px 10px; border-radius: 6px; text-align: left; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); color: var(--text2); }
+.tlesson:hover { border-color: var(--accent); color: var(--text); }
+.tlesson span { flex: 1; } .tlesson small { color: var(--muted); margin-left: 4px; }
+.tlesson .ic { color: var(--accent); }
+.tfix { margin: 0 0 10px; padding-left: 18px; color: var(--text2); line-height: 1.6; }
+.torig { font-size: 12px; color: var(--muted); margin: 0 !important; word-break: break-word; }
 .tutor-idle { color: var(--muted); line-height: 1.6; }
 .tutor-idle .big { font-size: 28px; }
 .tips-list { margin: 14px 0 0; padding: 0; list-style: none; }

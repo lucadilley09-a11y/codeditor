@@ -318,7 +318,8 @@
             const w = model.getWordAtPosition(pos); if (!w) return null;
             let word = w.word;
             if (lang === 'css') { const line = model.getLineContent(pos.lineNumber); const m = line.slice(0, w.endColumn - 1).match(/[\w-]+$/); if (m) word = m[0]; }
-            const dict = Q.tutorData[lang] || {}; const ent = dict[word] || (lang === 'sql' && dict[word.toUpperCase()]);
+            const dict = Q.tutorData[lang] || {}; const own = (k) => (Object.prototype.hasOwnProperty.call(dict, k) ? dict[k] : null); const ent = own(word) || (lang === 'sql' && own(word.toUpperCase()));
+            if (!ent || (lang === 'html' && ent[0] !== 'tag' && ent[0] !== 'attribute')) return null;
             if (!ent) return null;
             return { range: new monaco.Range(pos.lineNumber, w.startColumn, pos.lineNumber, w.endColumn), contents: [{ value: `**🎓 ${word}** · _${ent[0]}_` }, { value: toMd(ent[1]) }, ...(ent[2] ? [{ value: '```' + lang + '\n' + ent[2] + '\n```' }] : []), ...(ent[3] ? [{ value: '💡 ' + toMd(ent[3]) }] : [])] };
           },

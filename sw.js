@@ -1,5 +1,5 @@
 /* Quill service worker: caches the app so it opens offline. CDN assets (editor engine, Python) are cached after first use. */
-const VERSION = 'quill-v1';
+const VERSION = 'quill-v2';
 const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.json',
   'js/util.js', 'js/langs.js', 'js/themes.js', 'js/fs.js', 'js/editor.js', 'js/runner.js', 'js/tutor-data.js', 'js/tutor.js',
   'js/courses/web.js', 'js/courses/javascript.js', 'js/courses/python.js', 'js/courses/more.js', 'js/learn.js', 'js/extensions.js', 'js/app.js'];
