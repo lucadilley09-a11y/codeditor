@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8b6bff"/>
-      <stop offset="1" stop-color="#22d3ee"/>
-    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2230"/><stop offset="1" stop-color="#0d1118"/></linearGradient>
+    <linearGradient id="nib" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#e79a1c"/></linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <path d="M46 12c-12 2-22 12-26 26l-4 12 3 2 7-9c9-2 17-9 21-18-4 2-8 3-11 3 5-4 8-9 10-16z" fill="#fff"/>
-  <path d="M17 52l14-17" stroke="#5b3fd6" stroke-width="2.4" stroke-linecap="round"/>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="2"/>
+  <path d="M47 11c-12.5 2-22.5 12-26.5 26l-4 12 3 2 7-9.2c9.2-2 17.4-9 21.4-18.3-4 2-8 3-11.2 3 5.2-4 8.3-9 10.3-15.5z" fill="url(#nib)"/>
+  <path d="M17.5 51.5 31.5 34.5" stroke="#0d1118" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="47" cy="47" r="3.2" fill="#5cc8e4"/>
 </svg>

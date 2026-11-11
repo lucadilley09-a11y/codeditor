@@ -134,6 +134,7 @@
       onChange: (f) => changeFns.push(f), onCursor: (f) => cursorFns.push(f), onMarkers: (f) => markerFns.push(f),
       applySettings(s) {
         ed.updateOptions({
+          fontFamily: s.monoStack || "'JetBrains Mono', monospace",
           fontSize: s.fontSize, tabSize: s.tabSize, wordWrap: s.wordWrap ? 'on' : 'off', lineNumbers: s.lineNumbers ? 'on' : 'off',
           fontLigatures: s.ligatures, minimap: { enabled: !!s.minimap }, bracketPairColorization: { enabled: !!s.bracketColors },
           guides: { bracketPairs: s.bracketColors ? 'active' : false, indentation: !!s.indentGuides, highlightActiveIndentation: !!s.indentGuides },
@@ -145,6 +146,7 @@
           lightbulb: { enabled: 'on' }, folding: true, showFoldingControls: 'mouseover', renderValidationDecorations: 'on',
         });
         monaco.editor.getModels().forEach((m) => m.updateOptions({ tabSize: s.tabSize, insertSpaces: true }));
+        setTimeout(() => monaco.editor.remeasureFonts(), 50);
       },
       setTheme(id) { monaco.editor.setTheme(id); },
       async format() {
@@ -277,225 +279,33 @@
   }
   const render = (marked) => esc(marked).replace(/\u0001(\w+)\u0002/g, '<span class="t-$1">').replace(/\u0003/g, '</span>');
 
-  function makeFallback(host, settings) {
-    host.innerHTML = '';
-    const wrap = h('div', { class: 'fb-wrap' });
-    const gutter = h('div', { class: 'fb-gutter' });
-    const scroller = h('div', { class: 'fb-area' });
-    const pre = h('pre', { class: 'fb-hl', 'aria-hidden': 'true' });
-    const ta = h('textarea', { class: 'fb-ta', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', wrap: 'off' });
-    scroller.append(pre, ta); wrap.append(gutter, scroller); host.append(wrap);
-    const docs = new Map(); // id -> {value, lang, sel:[a,b], scroll:[x,y]}
-    let activeId = null, opts = { ...settings };
-    const changeFns = [], cursorFns = [], keyFns = [], typeFns = [];
-    let hl = highlighter('plaintext');
-
-    function paint() {
-      const v = ta.value;
-      pre.innerHTML = render(hl(v)) + '\n';
-      const n = v.split('\n').length;
-      if (gutter.childElementCount !== n) gutter.innerHTML = Array.from({ length: n }, (_, i) => `<div>${i + 1}</div>`).join('');
-      syncScroll();
-    }
-    function syncScroll() { pre.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`; gutter.scrollTop = ta.scrollTop; }
-    function fireCursor() {
-      if (!activeId) return;
-      const pos = ta.selectionStart, before = ta.value.slice(0, pos);
-      const line = before.split('\n').length, ls = before.lastIndexOf('\n') + 1;
-      const le = ta.value.indexOf('\n', pos);
-      const info = { id: activeId, line, col: pos - ls + 1, lineText: ta.value.slice(ls, le < 0 ? undefined : le), langId: docs.get(activeId).lang, selLength: ta.selectionEnd - ta.selectionStart, lines: ta.value.split('\n').length };
-      gutter.querySelectorAll('.cur').forEach((e) => e.classList.remove('cur'));
-      const g = gutter.children[line - 1]; if (g) g.classList.add('cur');
-      cursorFns.forEach((f) => f(info));
-    }
-    const ins = (text) => { ta.focus(); if (!document.execCommand('insertText', false, text)) { ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); } };
-
-    ta.addEventListener('input', (e) => {
-      if (!activeId) return;
-      docs.get(activeId).value = ta.value; paint();
-      changeFns.forEach((f) => f(activeId, ta.value));
-      if (e.inputType === 'insertText' && e.data) typeFns.forEach((f) => f(e.data, activeId));
-      fireCursor();
-    });
-    ta.addEventListener('scroll', syncScroll);
-    ['keyup', 'click', 'select'].forEach((ev) => ta.addEventListener(ev, fireCursor));
-    const pairs = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' };
-    ta.addEventListener('keydown', (e) => {
-      for (const f of keyFns) { f(e); if (e.defaultPrevented) return; }
-      const s = ta.selectionStart, en = ta.selectionEnd, v = ta.value, tab = ' '.repeat(opts.tabSize);
-      const lineStart = v.lastIndexOf('\n', s - 1) + 1;
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        if (s === en && !e.shiftKey) return ins(tab);
-        // indent / outdent selected lines
-        const block = v.slice(lineStart, en);
-        const out = e.shiftKey ? block.replace(new RegExp(`^ {1,${opts.tabSize}}`, 'gm'), '') : block.replace(/^/gm, tab);
-        ta.setSelectionRange(lineStart, en); ins(out); ta.setSelectionRange(lineStart, lineStart + out.length);
-      } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        const line = v.slice(lineStart, s);
-        let indent = line.match(/^\s*/)[0];
-        const prev = line.trimEnd().slice(-1), next = v[s];
-        const lang = docs.get(activeId)?.lang;
-        if ('{[('.includes(prev) && prev || (lang === 'python' && prev === ':')) {
-          if (prev && pairs[prev] === next) { ins('\n' + indent + tab + '\n' + indent); ta.setSelectionRange(s + 1 + indent.length + tab.length, s + 1 + indent.length + tab.length); return; }
-          indent += tab;
-        }
-        ins('\n' + indent);
-      } else if (opts.autoClose && pairs[e.key] && !e.ctrlKey) {
-        if ((e.key === '"' || e.key === "'" || e.key === '`') && v[s] === e.key) { e.preventDefault(); ta.setSelectionRange(s + 1, s + 1); return; }
-        e.preventDefault();
-        const sel = v.slice(s, en);
-        ins(e.key + sel + pairs[e.key]); ta.setSelectionRange(s + 1, s + 1 + sel.length);
-      } else if (opts.autoClose && ')]}'.includes(e.key) && v[s] === e.key && s === en) {
-        e.preventDefault(); ta.setSelectionRange(s + 1, s + 1);
-      } else if (e.key === 'Backspace' && s === en && pairs[v[s - 1]] === v[s]) {
-        e.preventDefault(); ta.setSelectionRange(s - 1, s + 1); ins('');
-      } else if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-        e.preventDefault(); api.command('comment');
-      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
-        e.preventDefault(); api.command('duplicate');
-      } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        e.preventDefault(); api.command(e.key === 'ArrowUp' ? 'moveUp' : 'moveDown');
-      }
-    });
-
-    const api = {
-      kind: 'fallback',
-      get activeId() { return activeId; },
-      has: (id) => docs.has(id),
-      open(id, value, langId) {
-        if (activeId && docs.has(activeId)) { const d = docs.get(activeId); d.sel = [ta.selectionStart, ta.selectionEnd]; d.scroll = [ta.scrollLeft, ta.scrollTop]; }
-        if (!docs.has(id)) docs.set(id, { value: value ?? '', lang: langId, sel: [0, 0], scroll: [0, 0] });
-        const d = docs.get(id); activeId = id; hl = highlighter(d.lang);
-        wrap.style.display = '';
-        ta.value = d.value; ta.setSelectionRange(...d.sel); ta.scrollLeft = d.scroll[0]; ta.scrollTop = d.scroll[1];
-        paint(); fireCursor();
-      },
-      showNothing() { activeId = null; wrap.style.display = 'none'; },
-      get(id) { return docs.has(id) ? docs.get(id).value : null; },
-      set(id, value) { const d = docs.get(id); if (!d) return; d.value = value; if (id === activeId) { ta.value = value; paint(); } changeFns.forEach((f) => f(id, value)); },
-      close(id) { docs.delete(id); if (activeId === id) api.showNothing(); },
-      rename(from, to, langId) { const d = docs.get(from); if (!d) return; docs.delete(from); d.lang = langId; docs.set(to, d); if (activeId === from) { activeId = to; hl = highlighter(langId); paint(); } },
-      setLang(id, langId) { const d = docs.get(id); if (d) { d.lang = langId; if (id === activeId) { hl = highlighter(langId); paint(); fireCursor(); } } },
-      langOf(id) { return docs.get(id)?.lang; },
-      onChange: (f) => changeFns.push(f), onCursor: (f) => cursorFns.push(f), onMarkers: () => {},
-      applySettings(s) {
-        opts = { ...s };
-        wrap.style.setProperty('--fs', s.fontSize + 'px'); wrap.style.setProperty('--tab', s.tabSize);
-        gutter.style.display = s.lineNumbers ? '' : 'none';
-        wrap.classList.toggle('ligatures', !!s.ligatures);
-        if (activeId) paint();
-      },
-      setTheme() {},
-      async format() { return false; },
-      focus: () => ta.focus(), layout: () => {},
-      insert: (text) => ins(text),
-      insertBelow(text) {
-        const v = ta.value, s = ta.selectionStart;
-        const ls = v.lastIndexOf('\n', s - 1) + 1; let le = v.indexOf('\n', s); if (le < 0) le = v.length;
-        const cur = v.slice(ls, le); const indent = cur.match(/^\s*/)[0] + (/[{:([]\s*$/.test(cur) ? ' '.repeat(Q.app?.settings.tabSize || 2) : '');
-        const body = text.replace(/\n$/, '').split('\n').map((l) => (l ? indent + l : l)).join('\n');
-        ta.focus();
-        if (!cur.trim()) { ta.setSelectionRange(ls, le); ins(body); ta.setSelectionRange(ls, ls + body.length); }
-        else { ta.setSelectionRange(le, le); ins('\n' + body); ta.setSelectionRange(le + 1, le + 1 + body.length); }
-        fireCursor();
-      },
-      insertSnippet(sn) {
-        // strip snippet placeholders: ${1:foo} -> foo, $0/$1 -> cursor
-        let cursor = -1; let out = '';
-        sn.replace(/\$\{\d+:([^}]*)\}|\$\d+|[^$]+|\$/g, (m, ph) => { if (ph != null) out += ph; else if (/^\$\d+$/.test(m)) { if (cursor < 0) cursor = out.length; } else out += m; });
-        const start = ta.selectionStart; ins(out);
-        if (cursor >= 0) ta.setSelectionRange(start + cursor, start + cursor);
-      },
-      reveal(line, col = 1) {
-        const lines = ta.value.split('\n'); let pos = 0;
-        for (let i = 0; i < Math.min(line - 1, lines.length); i++) pos += lines[i].length + 1;
-        pos += col - 1; ta.focus(); ta.setSelectionRange(pos, pos);
-        ta.scrollTop = Math.max(0, (line - 6) * parseFloat(getComputedStyle(ta).lineHeight));
-        syncScroll(); fireCursor();
-      },
-      selection: () => ta.value.slice(ta.selectionStart, ta.selectionEnd),
-      command(name) {
-        const v = ta.value, s = ta.selectionStart, en = ta.selectionEnd;
-        const ls = v.lastIndexOf('\n', s - 1) + 1; let le = v.indexOf('\n', en); if (le < 0) le = v.length;
-        const block = v.slice(ls, le);
-        ta.focus();
-        if (name === 'undo' || name === 'redo') document.execCommand(name);
-        else if (name === 'selectAll') ta.select();
-        else if (name === 'comment') {
-          const cm = Q.langs.byId[docs.get(activeId)?.lang]?.comment || {};
-          ta.setSelectionRange(ls, le);
-          if (cm.line) {
-            const all = block.split('\n').every((l) => !l.trim() || l.trimStart().startsWith(cm.line));
-            ins(block.split('\n').map((l) => (all ? l.replace(new RegExp('^(\\s*)' + cm.line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' ?'), '$1') : l.trim() ? l.replace(/^(\s*)/, `$1${cm.line} `) : l)).join('\n'));
-          } else if (cm.block) {
-            const [a, b] = cm.block; const t = block.trim();
-            ins(t.startsWith(a) && t.endsWith(b) ? block.replace(a + ' ', '').replace(a, '').replace(' ' + b, '').replace(b, '') : `${a} ${block} ${b}`);
-          }
-        } else if (name === 'duplicate') { ta.setSelectionRange(le, le); ins('\n' + block); }
-        else if (name === 'deleteLine') { ta.setSelectionRange(ls, Math.min(le + 1, v.length)); ins(''); }
-        else if (name === 'moveUp' || name === 'moveDown') {
-          const lines = v.split('\n'); const li = v.slice(0, ls).split('\n').length - 1; const lj = v.slice(0, le).split('\n').length - 1;
-          const t = name === 'moveUp' ? li - 1 : lj + 1; if (t < 0 || t >= lines.length) return;
-          const moved = lines.splice(li, lj - li + 1); lines.splice(name === 'moveUp' ? li - 1 : li + 1, 0, ...moved);
-          ta.select(); ins(lines.join('\n'));
-          const ns = lines.slice(0, name === 'moveUp' ? li - 1 : li + 1).join('\n').length + (name === 'moveUp' ? (li - 1 > 0 ? 1 : 0) : 1);
-          ta.setSelectionRange(ns + (s - ls), ns + (s - ls));
-        }
-        else if (name === 'upper' || name === 'lower') { const sel = v.slice(s, en); ins(name === 'upper' ? sel.toUpperCase() : sel.toLowerCase()); }
-        else if (name === 'trimWhitespace') { const t = v.replace(/[ \t]+$/gm, ''); if (t !== v) { const pos = s; api.set(activeId, t); ta.setSelectionRange(Math.min(pos, t.length), Math.min(pos, t.length)); } }
-        else if (name === 'gotoLine') { Q.prompt('Go to line', '').then((n) => n && api.reveal(parseInt(n, 10) || 1)); }
-        else if (name === 'find' || name === 'replace') bus.emit('cmd', 'view.search');
-        else if (name === 'zoomIn' || name === 'zoomOut') bus.emit('zoom', name === 'zoomIn' ? 1 : -1);
-        fireCursor();
-      },
-      markers: () => [], setMarkers: () => {},
-      decorate: () => {},
-      cursorCoords() {
-        // approximate using a mirror measurement
-        const before = ta.value.slice(0, ta.selectionStart).split('\n');
-        const cs = getComputedStyle(ta); const lh = parseFloat(cs.lineHeight); const cw = parseFloat(cs.fontSize) * 0.6;
-        const r = ta.getBoundingClientRect();
-        return { x: r.left + parseFloat(cs.paddingLeft) + before[before.length - 1].length * cw - ta.scrollLeft, y: r.top + parseFloat(cs.paddingTop) + (before.length - 0.5) * lh - ta.scrollTop };
-      },
-      async transpileTS(id) { // crude type stripper for offline mode
-        return api.get(id)
-          .replace(/^\s*(export\s+)?(type|interface)\s+\w+[^{=]*(=[^;]*;|\{[\s\S]*?^\})/gm, '')
-          .replace(/(\(|,)\s*(\w+)\??\s*:\s*[\w<>[\]|&\s.'"]+?(?=[,)=])/g, '$1$2')
-          .replace(/\)\s*:\s*[\w<>[\]|&\s.'"]+?(?=\s*(\{|=>))/g, ')')
-          .replace(/(let|const|var)\s+(\w+)\s*:\s*[\w<>[\]|&\s.'"]+?(?=\s*[=;\n])/g, '$1 $2')
-          .replace(/\s+as\s+[\w<>[\]]+/g, '')
-          .replace(/(\w)\s*<\s*[A-Z]\w*(?:\s*(?:,|extends)[^>]*)?>\s*(?=\()/g, '$1')
-          .replace(/\b(public|private|protected|readonly)\s+/g, '');
-      },
-      registerLang() {},
-      addTabHandler(fn) { keyFns.push((e) => { if (e.key === 'Tab' && !e.shiftKey && ta.selectionStart === ta.selectionEnd && fn()) e.preventDefault(); }); },
-      onKey: (f) => keyFns.push(f),
-      onType: (f) => typeFns.push(f),
-      textBefore() { const v = ta.value, s = ta.selectionStart; return v.slice(v.lastIndexOf('\n', s - 1) + 1, s); },
-      textAfter() { const v = ta.value, s = ta.selectionStart; const e = v.indexOf('\n', s); return v.slice(s, e < 0 ? undefined : e); },
-      replaceBefore(len, text, cursorBack = 0) { const s = ta.selectionStart; ta.setSelectionRange(s - len, s); ins(text); if (cursorBack) { const p = ta.selectionStart - cursorBack; ta.setSelectionRange(p, p); } },
-    };
-    api.applySettings(settings);
-    api.showNothing();
-    return api;
-  }
+  function makeFallback(host, settings, reason) { const api = Q.makeLite(host, settings, { highlighter, render }); api.reason = reason; return api; }
 
   Q.editorFactory = {
     completionProviders,
     addCompletions(langs, fn) { completionProviders.push({ langs, fn }); },
     async create(host, settings, { forceFallback } = {}) {
+      let reason = 'forced';
       if (!forceFallback) {
         try {
+          // Monaco needs its own stylesheet; some hosts (like sandboxed pages) block it, so check first
+          await new Promise((res, rej) => {
+            const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = MONACO + '/vs/editor/editor.main.css';
+            const t = setTimeout(() => rej(new Error('offline')), 6000);
+            l.onload = () => { clearTimeout(t); res(); }; l.onerror = () => { clearTimeout(t); rej(new Error(navigator.onLine ? 'blocked' : 'offline')); };
+            document.head.append(l);
+          });
           const monaco = await loadMonaco();
           host.innerHTML = '';
-          return makeMonaco(monaco, host, settings);
+          const api = makeMonaco(monaco, host, settings);
+          api.reason = 'ok';
+          return api;
         } catch (e) {
-          console.warn('Monaco unavailable, using built-in editor:', e);
+          reason = e && e.message === 'blocked' ? 'blocked' : 'offline';
+          console.info('Using Quill’s built-in editor (' + reason + ')');
         }
       }
-      return makeFallback(host, settings);
+      return makeFallback(host, settings, reason);
     },
   };
 })();

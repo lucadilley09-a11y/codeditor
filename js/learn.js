@@ -18,7 +18,7 @@
     ['streak-7', '☄️', 'Unbreakable', 'Learn 7 days in a row'],
     ['debugger', '🐞', 'Bug Hunter', 'Ask the Tutor to explain an error'],
     ['creator', '✍️', 'Creator', 'Create a new file'],
-    ['shipper', '📦', 'Shipper', 'Download a project as a .zip'],
+    ['shipper', '📦', 'Shipper', 'Export or share a project'],
     ['tinkerer', '🧩', 'Tinkerer', 'Toggle an extension'],
     ['night-owl', '🦉', 'Night Owl', 'Finish a lesson after 10 pm'],
     ['early-bird', '🐦', 'Early Bird', 'Finish a lesson before 7 am'],
@@ -106,6 +106,7 @@
     if (!S) return;
     persistCode();
     const id = tabId(); S = null;
+    app.focusLearn && app.focusLearn(false);
     if (app.virtuals.has(id)) app.closeVirtual(id);
     render(); Q.learn.renderSidebar();
   }
@@ -226,8 +227,9 @@
   }
 
   const updatePreview = debounce(() => {
-    if (!S || !previewFrame || S.course.run !== 'web') return;
-    previewFrame.srcdoc = buildWeb(step(), app.editor.get(tabId()) || '');
+    if (!S || !previewFrame || !previewFrame.isConnected || S.course.run !== 'web') return;
+    const st = step(); if (!st || st.type !== 'code') return;
+    previewFrame.srcdoc = buildWeb(st, app.editor.get(tabId()) || '');
   }, 250);
   function buildWeb(st, code) {
     const mode = st.mode || S.course.mode || 'html';

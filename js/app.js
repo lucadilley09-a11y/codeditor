@@ -5,11 +5,16 @@
   const app = document.getElementById('app');
 
   /* ===================== Settings ===================== */
-  const DEFAULTS = { theme: 'quill-dark', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: false, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
+  const DEFAULTS = { theme: 'quill-night', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, codeFont: 'JetBrains Mono', sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: false, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
+  settings.theme = Q.themes.get(settings.theme).id;
+  const EMBED = (() => { try { return window.top !== window; } catch { return true; } })();
   const saveSettings = () => store.set('settings', settings);
   const editorOpts = () => ({ ...settings, ...Q.ext.editorFlags() });
 
+  const FONTS = ['JetBrains Mono', 'Fira Code', 'IBM Plex Mono', 'Source Code Pro'];
+  const applyFont = () => { settings.monoStack = `'${settings.codeFont}', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace`; document.documentElement.style.setProperty('--mono', settings.monoStack); };
+  applyFont();
   Q.themes.applyCss(Q.themes.get(settings.theme));
   document.documentElement.style.setProperty('--sidebar-w', settings.sidebarW + 'px');
   document.documentElement.style.setProperty('--right-w', settings.rightW + 'px');
@@ -36,6 +41,18 @@
   const langOfId = (id) => (isVirtual(id) ? virtuals.get(id)?.lang : Q.langs.forPath(id).id);
   const titleOf = (id) => (isVirtual(id) ? virtuals.get(id)?.title : id.split('/').pop());
 
+  /* ===================== Segmented control (sliding thumb) ===================== */
+  function seg(host, items, onPick) {
+    host.innerHTML = '';
+    const thumb = h('span', { class: 'seg-thumb' });
+    host.append(thumb);
+    const btns = items.map(([key, html, title]) => { const b = h('button', { class: 'segb', 'data-k': key, html, title: title || '', onclick: () => onPick(key) }); host.append(b); return b; });
+    const place = () => { const on = btns.find((b) => b.classList.contains('on')); if (!on || !on.offsetWidth) return; thumb.style.width = on.offsetWidth + 'px'; thumb.style.transform = `translateX(${on.offsetLeft - 3}px)`; };
+    new ResizeObserver(place).observe(host);
+    return { set(k) { btns.forEach((b) => b.classList.toggle('on', b.dataset.k === k)); place(); }, place };
+  }
+  let pseg, rseg;
+
   /* ===================== Layout chrome ===================== */
   function buildChrome() {
     $('.cmdbox-ic').innerHTML = icon('search', 14);
@@ -51,23 +68,21 @@
     renderRunBtn(false);
     $('#runbtn').onclick = () => (runActive ? exec('run.stop') : exec('run.run'));
     const lb = $('#layoutbtns');
-    [['sidebar', 'view.sidebar', 'Toggle sidebar (Ctrl+B)'], ['panel', 'view.panel', 'Toggle console (Ctrl+J)'], ['rightbar', 'view.right', 'Toggle right panel (Ctrl+Alt+B)'], ['zen', 'view.zen', 'Zen mode (Ctrl+K Z)']].forEach(([ic, c, t]) =>
-      lb.append(h('button', { class: 'icon-btn', title: t, html: icon(ic, 17), onclick: () => exec(c) })));
+    [['sidebar', 'view.sidebar', 'Toggle sidebar (Ctrl+B)', 'sb'], ['panel', 'view.panel', 'Toggle console (Ctrl+J)', 'pn'], ['rightbar', 'view.right', 'Toggle right panel (Ctrl+Alt+B)', 'rt'], ['zen', 'view.zen', 'Zen mode (Ctrl+K Z)', 'zn']].forEach(([ic, c, t, k]) =>
+      lb.append(h('button', { class: 'icon-btn', id: 'lb-' + k, title: t, html: icon(ic, 16), onclick: () => exec(c) })));
 
     // panel tabs
-    const pt = $('#ptabs');
-    pt.append(h('button', { class: 'ptab on', 'data-p': 'console', html: 'Console <span class="count" id="ccount">0</span>', onclick: () => showPanel('console') }));
-    pt.append(h('button', { class: 'ptab', 'data-p': 'problems', html: 'Problems <span class="count" id="pcount">0</span>', onclick: () => showPanel('problems') }));
+    pseg = seg($('#ptabs'), [['console', `${icon('terminal', 13)}Console<span class="count zero" id="ccount"></span>`], ['problems', `${icon('alert', 13)}Problems<span class="count zero" id="pcount"></span>`]], (k) => showPanel(k));
+    pseg.set('console');
+    $('#psummary').onclick = () => exec('view.panel');
     const tools = $('#paneltools');
-    tools.append(h('input', { class: 'stdin', id: 'stdin', placeholder: 'Input lines (a; b; c)', title: 'Values for input()/prompt(), separated by ;' }));
-    tools.append(h('button', { class: 'icon-btn sm', title: 'Clear console (Ctrl+L)', html: icon('trash', 14), onclick: () => exec('console.clear') }));
-    tools.append(h('button', { class: 'icon-btn sm', title: 'Hide panel', html: icon('close', 14), onclick: () => exec('view.panel') }));
+    tools.append(h('input', { class: 'stdin', id: 'stdin', placeholder: 'Input for input(): a; b; c', title: 'Answers for input() / prompt(), separated by ;' }));
+    tools.append(h('button', { class: 'icon-btn sm', title: 'Clear console (Ctrl+Shift+L)', html: icon('trash', 14), onclick: () => exec('console.clear') }));
+    tools.append(h('button', { class: 'icon-btn sm', id: 'panel-toggle', title: 'Collapse console (Ctrl+J)', html: icon('chevron', 14), onclick: () => exec('view.panel') }));
     $$('.pview')[0].classList.add('on');
 
     // right tabs
-    const rt = $('#rtabs');
-    [['preview', 'eye', 'Preview'], ['lesson', 'learn', 'Lesson'], ['tutor', 'bulb', 'Tutor']].forEach(([v, ic, label]) =>
-      rt.append(h('button', { class: 'rtab', 'data-r': v, html: `${icon(ic, 14)}${label}`, onclick: () => showRight(v) })));
+    rseg = seg($('#rtabs'), [['preview', `${icon('eye', 14)}Preview`], ['lesson', `${icon('learn', 14)}Lesson`], ['tutor', `${icon('bulb', 14)}Tutor`]], (k) => showRight(k));
 
     // tab actions
     const ta = $('#tabactions');
@@ -81,7 +96,7 @@
       { label: 'Unfold all', icon: 'chevron', action: () => editor.command('unfoldAll') },
       { label: 'Change language mode', icon: 'box', action: () => exec('lang.pick') },
       '-',
-      { label: 'Download this file', icon: 'download', action: () => exec('file.download') },
+      { label: 'Copy this file', icon: 'copy', action: () => exec('file.copy') },
       { label: 'Close all tabs', icon: 'close', action: () => exec('tabs.closeAll') },
     ]); } }));
 
@@ -104,8 +119,13 @@
     if (v === 'extensions') renderExtensions();
     if (v === 'settings') renderSettings();
   }
+  function syncLayoutBtns() {
+    $('#lb-sb')?.classList.toggle('on', !settings.hideSidebar); $('#lb-pn')?.classList.toggle('on', !settings.hidePanel);
+    $('#lb-rt')?.classList.toggle('on', !settings.hideRight); $('#lb-zn')?.classList.toggle('on', app.classList.contains('zen'));
+    const pt = $('#panel-toggle'); if (pt) { pt.style.transform = settings.hidePanel ? 'rotate(-90deg)' : 'rotate(90deg)'; pt.title = settings.hidePanel ? 'Open console (Ctrl+J)' : 'Collapse console (Ctrl+J)'; }
+  }
   function showPanel(p) {
-    $$('.ptab').forEach((t) => t.classList.toggle('on', t.dataset.p === p));
+    pseg.set(p);
     $$('.pview').forEach((t) => t.classList.toggle('on', t.dataset.pview === p));
     if (settings.hidePanel) exec('view.panel');
   }
@@ -113,19 +133,31 @@
     settings.rview = v; saveSettings();
     if (settings.hideRight) { settings.hideRight = false; app.classList.remove('no-right'); }
     app.classList.add('show-right');
-    $$('.rtab').forEach((t) => t.classList.toggle('on', t.dataset.r === v));
+    rseg.set(v);
+    focusLearn(v === 'lesson' && Q.learn?.active);
+    syncLayoutBtns();
     $$('.rview').forEach((t) => t.classList.toggle('on', t.dataset.rview === v));
     if (v === 'preview') refreshPreview(true);
     if (v === 'tutor') Q.tutor.refresh();
   }
 
+  // Lesson focus: widen the companion and tuck the sidebar away while a lesson is open
+  let focusHid = false;
+  function focusLearn(on) {
+    if (on === app.classList.contains('focus-learn')) return;
+    app.classList.toggle('focus-learn', on);
+    if (on && !settings.hideSidebar && innerWidth < 1500) { focusHid = true; app.classList.add('no-sidebar'); }
+    if (!on && focusHid) { focusHid = false; if (!settings.hideSidebar) app.classList.remove('no-sidebar'); }
+    setTimeout(() => editor?.layout(), 380);
+  }
+
   /* ===================== Menus ===================== */
   function buildMenus() {
     const menus = {
-      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'file.download', 'project.zip', 'project.backup', 'project.restore'],
+      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'project.export', 'project.importText', '-', 'project.backup', 'project.restore'],
       Edit: ['edit.undo', 'edit.redo', '-', 'edit.find', 'edit.replace', 'search.all', '-', 'edit.comment', 'edit.duplicate', 'edit.format', 'edit.gotoLine'],
       View: ['palette', 'quickOpen', '-', 'view.sidebar', 'view.panel', 'view.right', 'view.zen', '-', 'theme.pick', 'zoom.in', 'zoom.out', 'zoom.reset'],
-      Run: ['run.run', 'run.stop', 'preview.refresh', 'preview.newTab', '-', 'console.clear'],
+      Run: ['run.run', 'run.stop', 'preview.refresh', ...(EMBED ? [] : ['preview.newTab']), '-', 'console.clear'],
       Learn: ['learn.open', 'learn.continue', 'tutor.open', 'learn.badges'],
       Help: ['help.keys', 'help.welcome', 'help.about'],
     };
@@ -159,7 +191,7 @@
         { label: 'Close', icon: 'close', action: () => closeTab(id) },
         { label: 'Close others', action: () => all.filter((x) => x !== id).forEach(closeTab) },
         { label: 'Close all', action: () => exec('tabs.closeAll') },
-        ...(v ? [] : ['-', { label: 'Rename…', icon: 'edit', action: () => renamePath(id) }, { label: 'Reveal in explorer', icon: 'files', action: () => revealInTree(id) }, { label: 'Download', icon: 'download', action: () => download(titleOf(id), fs.read(id)) }]),
+        ...(v ? [] : ['-', { label: 'Rename…', icon: 'edit', action: () => renamePath(id) }, { label: 'Reveal in explorer', icon: 'files', action: () => revealInTree(id) }, { label: 'Copy contents', icon: 'copy', action: () => copyText(fs.read(id), `Copied ${titleOf(id)}`) }]),
       ]); };
       if (!v) {
         t.ondragstart = (e) => { e.dataTransfer.setData('quill/tab', id); t.classList.add('dragging'); };
@@ -169,9 +201,11 @@
       }
       el.append(t);
     });
+    if (!all.length) el.append(h('span', { class: 'tab-empty', text: 'No files open' }));
     const on = el.querySelector('.tab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     renderCrumbs();
     $('#welcome').classList.toggle('on', !editor?.activeId);
+    app.classList.toggle('welcome-on', !editor?.activeId);
     if (!editor?.activeId) renderWelcome();
   }
 
@@ -233,8 +267,9 @@
       h('button', { class: 'icon-btn sm', title: 'New file', html: icon('filePlus', 15), onclick: () => exec('file.new') }),
       h('button', { class: 'icon-btn sm', title: 'New folder', html: icon('folderPlus', 15), onclick: () => exec('file.newFolder') }),
       h('button', { class: 'icon-btn sm', title: 'Import files from your computer', html: icon('upload', 15), onclick: () => exec('file.import') }),
-      h('button', { class: 'icon-btn sm', title: 'Download project as .zip', html: icon('zip', 15), onclick: () => exec('project.zip') })));
-    const proj = h('button', { class: 'proj-switch', title: 'Switch project', onclick: () => exec('project.switch') }, h('span', { html: icon('project', 15) }), h('span', { class: 'name', text: fs.project.name }), h('span', { html: icon('chevron', 13) }));
+      h('button', { class: 'icon-btn sm', title: 'Export / share this project', html: icon('external', 15), onclick: () => exec('project.export') })));
+    const nfiles = fs.list().length;
+    const proj = h('button', { class: 'proj-switch', title: 'Switch project', onclick: () => exec('project.switch') }, h('span', { class: 'pic', html: icon('project', 15) }), h('span', { class: 'name', html: `${esc(fs.project.name)}<span class="sub">${nfiles} file${nfiles === 1 ? '' : 's'} · switch project</span>` }), h('span', { html: icon('chevron', 13), style: { color: 'var(--muted)' } }));
     const tree = h('div', { class: 'tree', id: 'tree', tabindex: 0 });
     v.append(head, proj, h('div', { class: 'view-body' }, tree));
     buildTree(tree);
@@ -280,7 +315,7 @@
           { label: 'Open', icon: 'files', action: () => openFile(f) },
           { label: 'Rename…', icon: 'edit', key: 'F2', action: () => renamePath(f) },
           { label: 'Duplicate', icon: 'copy', action: () => duplicatePath(f) },
-          { label: 'Download', icon: 'download', action: () => download(f.split('/').pop(), fs.read(f)) },
+          { label: 'Copy contents', icon: 'copy', action: () => copyText(fs.read(f), `Copied ${f.split('/').pop()}`) },
           { label: 'Copy path', icon: 'copy', action: () => navigator.clipboard?.writeText(f) },
           '-', { label: 'Delete', icon: 'trash', danger: true, key: 'Del', action: () => deletePath(f) },
         ]); };
@@ -434,8 +469,10 @@
 
   /* ===================== Console & problems ===================== */
   const consoleEl = () => $('#console');
-  let ccount = 0, lastLine = null;
-  function clearConsole() { consoleEl().innerHTML = '<div class="console-empty">Output appears here. Press <kbd>Ctrl</kbd> <kbd>Enter</kbd> to run.</div>'; ccount = 0; lastLine = null; $('#ccount').textContent = '0'; $('#ccount').classList.remove('bad'); }
+  let ccount = 0, lastLine = null, lastSummaryReal = false;
+  function setCount(el, n, bad) { el.textContent = n || ''; el.classList.toggle('zero', !n); el.classList.toggle('bad', !!bad); pseg?.place(); }
+  function summary(text, cls) { const s = $('#psummary'); s.textContent = text; s.className = 'panel-summary' + (cls ? ' ' + cls : ''); }
+  function clearConsole() { consoleEl().innerHTML = '<div class="console-empty">Output appears here. Press <kbd>Ctrl</kbd> <kbd>Enter</kbd> to run.</div>'; ccount = 0; lastLine = null; lastSummaryReal = false; setCount($('#ccount'), 0); summary('Console is empty · Ctrl+Enter runs your code'); }
   function log(type, text, { line, file, lang } = {}) {
     const c = consoleEl();
     c.querySelector('.console-empty')?.remove();
@@ -450,8 +487,9 @@
     if (type === 'error') row.append(h('button', { class: 'explain', html: `${icon('bulb', 12)}Explain`, onclick: () => { Q.tutor.explainError(text, lang || langOfId(editor.activeId), { line, file }); showRight('tutor'); } }));
     c.append(row); lastLine = row;
     c.parentElement.scrollTop = c.parentElement.scrollHeight;
-    ccount++; $('#ccount').textContent = ccount;
-    if (type === 'error') { $('#ccount').classList.add('bad'); if (settings.hidePanel) exec('view.panel'); }
+    ccount++; setCount($('#ccount'), ccount, type === 'error' || $('#ccount').classList.contains('bad'));
+    if (type !== 'sys' || !lastSummaryReal) { summary((type === 'error' ? '✕ ' : type === 'sys' ? '' : '› ') + text.split('\n')[0].slice(0, 160), type === 'error' ? 'error' : ''); lastSummaryReal = type !== 'sys'; }
+    if (type === 'error' && settings.hidePanel) exec('view.panel');
   }
   Q.log = log;
 
@@ -464,7 +502,7 @@
     el.innerHTML = items.length ? '' : '<div class="console-empty">No problems detected. Nice! ✨</div>';
     items.forEach((m) => el.append(h('div', { class: 'prob ' + m.severity, html: `${icon(m.severity === 'error' ? 'alert' : 'info', 14)}<span>${esc(m.msg)}</span><span class="where">${esc(titleOf(m.id) || '')}${m.line ? ':' + m.line : ''}</span>`, onclick: () => { activate(m.id); if (m.line) setTimeout(() => editor.reveal(m.line, m.col || 1), 30); } })));
     const errs = items.filter((m) => m.severity === 'error').length, warns = items.filter((m) => m.severity === 'warning').length;
-    $('#pcount').textContent = items.length; $('#pcount').classList.toggle('bad', errs > 0);
+    setCount($('#pcount'), items.length, errs > 0);
     const sb = $('#sb-problems'); if (sb) sb.innerHTML = `${icon('alert', 13)}${errs} ${icon('info', 13)}${warns}`;
     if (sb) sb.className = 'sbi' + (errs ? ' err' : warns ? ' warn' : '');
     Q.ext.onMarkers(editor.activeId);
@@ -481,7 +519,7 @@
       h('div', { class: 'urlbox' }, h('span', { html: icon('lock', 12) }), sel),
       h('button', { class: 'icon-btn sm', id: 'dev-btn', title: 'Device size', html: icon('split', 14), onclick: (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu(r.left - 120, r.bottom + 4, [
         ['full', 'Fill panel'], ['phone', 'Phone · 375×667'], ['tablet', 'Tablet · 768×1024'], ['laptop', 'Laptop · 1280×800']].map(([k, l]) => ({ label: (previewDevice === k ? '✓ ' : '   ') + l, action: () => setDevice(k) }))); } }),
-      h('button', { class: 'icon-btn sm', title: 'Open in new browser tab', html: icon('external', 14), onclick: () => exec('preview.newTab') }));
+      EMBED ? null : h('button', { class: 'icon-btn sm', title: 'Open in new browser tab', html: icon('external', 14), onclick: () => exec('preview.newTab') }));
   }
   function setDevice(k) {
     previewDevice = k;
@@ -613,8 +651,8 @@
     const id = editor?.activeId;
     $('#sb-lang').textContent = id ? Q.langs.byId[editor.langOf(id) || langOfId(id)]?.name || 'Plain Text' : '';
     $('#sb-pos').textContent = info && id ? `Ln ${info.line}, Col ${info.col}${info.selLength ? ` (${info.selLength} selected)` : ''}` : '';
-    $('#sb-engine').textContent = editor?.kind === 'fallback' ? 'Offline editor' : '';
-    $('#sb-engine').title = editor?.kind === 'fallback' ? 'The full editor engine loads from the internet. You are using Quill’s built-in lightweight editor.' : '';
+    $('#sb-engine').textContent = editor?.kind === 'fallback' ? 'Quill editor' : 'Monaco';
+    $('#sb-engine').title = editor?.kind === 'fallback' ? 'Quill’s built-in editor' : 'Monaco — the editor engine inside VS Code';
   }
   bus.on('py:status', (s, err) => {
     const dot = $('#sb-py .pydot'); if (!dot) return;
@@ -681,19 +719,44 @@
   function renderWelcome() {
     const w = $('#welcome');
     const cont = Q.learn.nextLesson();
-    const recent = fs.projects.slice(0, 5);
+    const st = Q.learn.state;
+    const hr = new Date().getHours();
+    const greet = hr < 5 ? 'Up late?' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
     w.innerHTML = '';
     const root = h('div', { class: 'welcome' });
-    root.append(h('h1', { html: `<img src="icon.svg" width="36" height="36" alt="">Quill` }), h('p', { class: 'sub', text: 'Write code in 20+ languages — and learn while you do it.' }));
-    if (cont) root.append(h('div', { class: 'continue-card', onclick: () => Q.learn.open(cont.course.id, cont.lesson.id) },
-      h('div', { class: 'course-ic', style: { '--c': cont.course.color }, text: cont.course.badge }),
-      h('div', {}, h('div', { class: 'meta', text: 'Continue learning' }), h('div', { class: 'big', text: `${cont.course.title}: ${cont.lesson.title}` })),
-      h('span', { class: 'go btn primary', html: `Start ${icon('arrowRight', 14)}` })));
-    const col = (title, links) => h('div', { class: 'wcol' }, h('h4', { text: title }), ...links.map(([ic, label, fn, small]) => h('button', { class: 'wlink', html: `${icon(ic, 16)}<span>${label}</span>${small ? `<small>${small}</small>` : ''}`, onclick: fn })));
-    root.append(h('div', { class: 'wgrid' },
-      col('Start', [['filePlus', 'New file…', () => exec('file.new'), 'Ctrl+Alt+N'], ['project', 'New project from template…', () => exec('project.new')], ['upload', 'Import files…', () => exec('file.import')], ['search', 'Quick open', () => exec('quickOpen'), 'Ctrl+P']]),
-      col('Learn', [['learn', 'Browse courses', () => exec('learn.open')], ['bulb', 'Open the live Tutor', () => exec('tutor.open')], ['trophy', 'Badges & progress', () => exec('learn.badges')], ['keyboard', 'Keyboard shortcuts', () => exec('help.keys'), 'Ctrl+K Ctrl+S']]),
-      col('Recent projects', recent.map((p) => ['folder', esc(p.name), () => fs.switchProject(p.id), `${Object.keys(p.files).length} files`]))));
+    root.append(h('div', { class: 'w-hero' }, h('img', { src: 'icon.svg', width: 56, height: 56, alt: '' }), h('div', {}, h('h1', { text: `${greet}. What are we building?` }), h('p', { text: 'Pick up a lesson, start something new, or open a file on the left.' }))));
+    // left column: learning
+    const left = h('div', {});
+    if (cont) {
+      const done = cont.course.lessons.filter((l) => st.done[`${cont.course.id}/${l.id}`]).length;
+      const pct = Math.round((done / cont.course.lessons.length) * 100);
+      left.append(h('div', { class: 'w-label', text: 'Continue learning' }), h('div', { class: 'continue-card', role: 'button', tabindex: 0, onclick: () => Q.learn.open(cont.course.id, cont.lesson.id), onkeydown: (e) => e.key === 'Enter' && Q.learn.open(cont.course.id, cont.lesson.id) },
+        h('div', { class: 'ring', style: { '--p': pct, '--c': cont.course.color }, html: `<span>${esc(cont.course.badge)}</span>` }),
+        h('div', { style: { minWidth: 0 } }, h('div', { class: 'meta', text: `${cont.course.title} · lesson ${cont.course.lessons.indexOf(cont.lesson) + 1} of ${cont.course.lessons.length}` }), h('div', { class: 'big', text: cont.lesson.title }), h('div', { class: 'meta', text: `${pct}% of the course done · +${cont.lesson.xp || 20} XP` })),
+        h('span', { class: 'go btn primary', html: `Start ${icon('arrowRight', 14)}` })));
+    }
+    const lvl = (() => { let l = 1, need = 100, base = 0; while (st.xp >= base + need) { base += need; l++; need = 100 + (l - 1) * 50; } return l; })();
+    left.append(h('div', { class: 'w-stats' },
+      h('div', { class: 'w-stat', html: `<b>${lvl}</b><span>Level · ${st.xp} XP</span>` }),
+      h('div', { class: 'w-stat', html: `<b>${Object.keys(st.done).length}</b><span>Lessons done</span>` }),
+      h('div', { class: 'w-stat', html: `<b>${st.streak.count}</b><span>Day streak</span>` })));
+    left.append(h('div', { class: 'w-label', style: { marginTop: '28px' }, text: 'Start something' }));
+    const act = (ic, title, sub, fn) => h('button', { class: 'w-act', onclick: fn, html: `${icon(ic, 18)}<b>${title}</b><small>${sub}</small>` });
+    left.append(h('div', { class: 'w-actions' },
+      act('filePlus', 'New file', 'HTML, Python, JS, C++… pick any extension', () => exec('file.new')),
+      act('project', 'New project', 'Web page, canvas game, Python or blank', () => exec('project.new')),
+      act('learn', 'Browse courses', `${Q.learn.courses.length} courses and language tours`, () => exec('learn.open')),
+      act('upload', 'Import', 'Paste an export or choose files', () => exec('project.importText'))));
+    // right column: projects + keys
+    const right = h('div', {});
+    right.append(h('div', { class: 'w-label', text: 'Your projects' }));
+    const list = h('div', { class: 'w-recent' });
+    fs.projects.slice(0, 6).forEach((p) => { const n = Object.keys(p.files).length; list.append(h('button', { class: 'w-proj' + (p.id === fs.project.id ? ' on' : ''), onclick: () => (p.id === fs.project.id ? (p.tabs[0] && openFile(p.tabs[0])) : fs.switchProject(p.id)), html: `<span class="pi2">${icon('project', 15)}</span><span><b>${esc(p.name)}</b><small>${n} file${n === 1 ? '' : 's'} · edited ${new Date(p.updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></span>` })); });
+    right.append(list);
+    right.append(h('div', { class: 'w-label', style: { marginTop: '28px' }, text: 'Handy keys' }));
+    const k = (keys) => keys.split(' ').map((x) => `<kbd>${x}</kbd>`).join('');
+    right.append(h('div', { class: 'w-keys', html: [['Ctrl Enter', 'Run your code'], ['Ctrl P', 'Jump to any file'], ['Ctrl Shift P', 'Every command'], ['Ctrl F', 'Find in file'], ['Ctrl /', 'Comment a line'], ['Ctrl J', 'Show or hide the console']].map(([a, b]) => `<span>${k(a)}</span><span>${b}</span>`).join('') }));
+    root.append(left, right);
     w.append(root);
   }
 
@@ -736,10 +799,12 @@
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Theme' }), grid));
     const num = (key, label, min, max) => { const i = h('input', { type: 'number', min, max, value: settings[key] }); i.onchange = () => { settings[key] = clamp(+i.value || DEFAULTS[key], min, max); i.value = settings[key]; applySettings(); }; return h('div', { class: 'set' }, h('label', { text: label }), i); };
     const tog = (key, label) => { const s = h('button', { class: 'switch' + (settings[key] ? ' on' : '') }); s.onclick = () => { settings[key] = !settings[key]; s.classList.toggle('on', settings[key]); applySettings(); }; return h('div', { class: 'set' }, h('label', { text: label }), s); };
-    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Editor' }), num('fontSize', 'Font size', 9, 32), num('tabSize', 'Tab size', 1, 8), tog('wordWrap', 'Word wrap'), tog('lineNumbers', 'Line numbers'), tog('ligatures', 'Font ligatures (=> ≠)'), tog('autoClose', 'Auto-close brackets & quotes'), tog('autocomplete', 'Autocomplete suggestions'), tog('hover', 'Hover info')));
+    const fontSel = h('select', { id: 'set-font' }, ...FONTS.map((f) => h('option', { value: f, selected: f === settings.codeFont, text: f })));
+    fontSel.onchange = () => { settings.codeFont = fontSel.value; applyFont(); applySettings(); if (document.fonts) document.fonts.load(`14px '${settings.codeFont}'`).then(() => applySettings()); };
+    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Editor' }), h('div', { class: 'set' }, h('label', { for: 'set-font', text: 'Code font' }), fontSel), num('fontSize', 'Font size', 9, 32), num('tabSize', 'Tab size', 1, 8), tog('wordWrap', 'Word wrap'), tog('lineNumbers', 'Line numbers'), tog('ligatures', 'Font ligatures (=> ≠)'), tog('autoClose', 'Auto-close brackets & quotes'), tog('autocomplete', 'Autocomplete suggestions'), tog('hover', 'Hover info')));
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Workspace' }), tog('livePreview', 'Live preview while typing'), tog('tutorFollow', 'Tutor follows your cursor'), tog('confirmDelete', 'Confirm before deleting')));
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Data' }),
-      h('div', { class: 'set' }, h('button', { class: 'btn', html: `${icon('download', 14)} Backup everything`, onclick: () => exec('project.backup') }), h('button', { class: 'btn', html: `${icon('upload', 14)} Restore`, onclick: () => exec('project.restore') })),
+      h('div', { class: 'set' }, h('button', { class: 'btn', html: `${icon('copy', 14)} Back up everything`, onclick: () => exec('project.backup') }), h('button', { class: 'btn', html: `${icon('upload', 14)} Restore`, onclick: () => exec('project.restore') })),
       h('div', { class: 'set' }, h('button', { class: 'btn ghost', text: 'Reset settings to defaults', onclick: async () => { if (await confirm('Reset settings?', 'Your files and progress stay. Only settings change.', false)) { Object.assign(settings, DEFAULTS); applySettings(); setTheme(DEFAULTS.theme); renderSettings(); } } }))));
   }
   function applySettings() { saveSettings(); editor.applySettings(editorOpts()); updateStatus(); }
@@ -789,6 +854,49 @@
   }
   function pickFiles(opts = {}) {
     return new Promise((res) => { const i = h('input', { type: 'file', multiple: true, accept: opts.accept || '' }); i.onchange = () => res(i.files); i.click(); });
+  }
+
+  /* ===================== Copy / export without downloads ===================== */
+  function copyText(text, msg = 'Copied') {
+    const fallback = () => {
+      const ta = h('textarea', { class: 'input', rows: 10, readonly: true }); ta.value = text;
+      modal({ title: 'Copy this text', body: h('div', {}, h('p', { text: 'Your browser blocked automatic copying. Press Ctrl+C (the text is already selected), then paste it wherever you like.' }), ta) });
+      setTimeout(() => { ta.focus(); ta.select(); }, 60);
+    };
+    try { navigator.clipboard.writeText(text).then(() => toast(msg, 'success', 1400), fallback); } catch { fallback(); }
+  }
+  function bundle(scope) { return scope === 'all' ? fs.exportAll() : JSON.stringify({ quill: 1, name: fs.project.name, files: fs.project.files }); }
+  function exportDialog(scope = 'project') {
+    const ta = h('textarea', { class: 'input', rows: 9, readonly: true, spellcheck: 'false' });
+    const note = h('p', { class: 'exp-note' });
+    const segHost = h('div', { class: 'seg exp-tabs' });
+    const update = (k) => { scope = k; sg.set(k); ta.value = bundle(k); const kb = Math.max(1, Math.round(ta.value.length / 1024)); note.textContent = k === 'all' ? `All ${fs.projects.length} project(s), your lesson progress, XP and settings · ${kb} KB of text.` : `${fs.list().length} file(s) in “${fs.project.name}” · ${kb} KB of text.`; };
+    const sg = seg(segHost, [['project', 'This project'], ['all', 'Everything (backup)']], update);
+    const body = h('div', {}, h('p', { html: 'Copy this text and keep it somewhere safe — a Google Doc, a note, or an email to yourself. To bring it back, open Quill on any computer and choose <b>File → Import project from pasted text</b>.' }), segHost, ta, note);
+    modal({ title: 'Export & share', body, wide: true, buttons: [
+      ...(EMBED ? [] : [{ label: 'Download .zip', onclick: () => { download(fs.project.name.replace(/[^\w-]+/g, '-') + '.zip', Q.zip(fs.project.files)); return false; } }]),
+      { label: 'Close', value: null },
+      { label: 'Copy text', primary: true, onclick: () => { copyText(ta.value, scope === 'all' ? 'Backup copied' : 'Project copied'); Q.learn.badge('shipper'); } },
+    ] });
+    requestAnimationFrame(() => update(scope));
+  }
+  function importDialog() {
+    const ta = h('textarea', { class: 'input', rows: 9, placeholder: 'Paste the text you copied from Export here…', spellcheck: 'false' });
+    const body = h('div', {}, h('p', { html: 'Paste a project or a full backup you copied from <b>Export & share</b>. You can also bring in files from your computer.' }), ta);
+    modal({ title: 'Import', body, wide: true, buttons: [
+      { label: 'Choose files…', onclick: async () => { importFiles(await pickFiles()); } },
+      { label: 'Cancel', value: null },
+      { label: 'Import', primary: true, onclick: () => {
+        let d; try { d = JSON.parse(ta.value.trim()); } catch { toast('That text isn’t a Quill export. Copy it again from Export & share.', 'error', 3500); return false; }
+        if (d && d.quill && d.projects) {
+          confirm('Restore full backup?', 'This replaces all current projects, progress and settings with the backup.', false).then((ok) => { if (!ok) return; store.set('projects', d.projects); store.set('learn', d.progress || {}); store.set('settings', d.settings || {}); store.set('currentProject', Object.keys(d.projects)[0]); location.reload(); });
+          return;
+        }
+        if (d && d.files && typeof d.files === 'object') { fs.importProject((d.name || 'Imported project') + (fs.projects.some((p) => p.name === d.name) ? ' (copy)' : ''), d.files); toast('Project imported', 'success'); const first = Object.keys(d.files)[0]; if (first) setTimeout(() => openFile(first), 50); return; }
+        toast('That text isn’t a Quill export.', 'error'); return false;
+      } },
+    ] });
+    setTimeout(() => ta.focus(), 60);
   }
 
   /* ===================== Projects UI ===================== */
@@ -861,15 +969,19 @@
     cmd('file.newFolder', 'New folder…', 'File', () => newFolder());
     cmd('file.import', 'Import files from computer…', 'File', async () => importFiles(await pickFiles()));
     cmd('file.save', 'Save', 'File', async () => { const id = editor.activeId; if (!id) return; await Q.ext.onSave(id); if (!isVirtual(id)) fs.write(id, editor.get(id)); fs.saveNow(); toast('Saved', 'success', 1000); }, 'Ctrl+S');
-    cmd('file.download', 'Download current file', 'File', () => { const id = editor.activeId; if (!id) return; download(isVirtual(id) ? 'lesson.' + (Q.langs.byId[langOfId(id)]?.exts[0] || 'txt') : id.split('/').pop(), editor.get(id)); });
+    cmd('file.copy', 'Copy current file to clipboard', 'File', () => { const id = editor.activeId; if (!id) return; copyText(editor.get(id), `Copied ${titleOf(id)}`); });
+    cmd('file.download', 'Download current file', 'File', () => { const id = editor.activeId; if (!id) return; if (EMBED) return exec('file.copy'); download(isVirtual(id) ? 'lesson.' + (Q.langs.byId[langOfId(id)]?.exts[0] || 'txt') : id.split('/').pop(), editor.get(id)); });
     cmd('file.rename', 'Rename current file…', 'File', () => { const id = editor.activeId; if (id && !isVirtual(id)) renamePath(id); });
     cmd('file.delete', 'Delete current file', 'File', () => { const id = editor.activeId; if (id && !isVirtual(id)) deletePath(id); });
     cmd('project.new', 'New project…', 'Project', newProjectDialog);
     cmd('project.switch', 'Switch project…', 'Project', switchProjectDialog);
     cmd('project.rename', 'Rename project…', 'Project', async () => { const n = await prompt('Rename project', fs.project.name); if (n) { fs.renameProject(fs.project.id, n); buildStatus(); } });
-    cmd('project.zip', 'Download project as .zip', 'Project', () => { download(fs.project.name.replace(/[^\w-]+/g, '-') + '.zip', Q.zip(fs.project.files)); Q.learn.badge('shipper'); });
-    cmd('project.backup', 'Backup everything (.json)', 'Project', () => download(`quill-backup-${new Date().toISOString().slice(0, 10)}.json`, fs.exportAll(), 'application/json'));
-    cmd('project.restore', 'Restore from backup…', 'Project', async () => {
+    cmd('project.export', 'Export / share project…', 'Project', () => exportDialog());
+    cmd('project.importText', 'Import project from pasted text…', 'Project', () => importDialog());
+    cmd('project.zip', 'Download project as .zip', 'Project', () => { if (EMBED) return exportDialog(); download(fs.project.name.replace(/[^\w-]+/g, '-') + '.zip', Q.zip(fs.project.files)); Q.learn.badge('shipper'); });
+    cmd('project.backup', 'Back up everything…', 'Project', () => exportDialog('all'));
+    cmd('project.restore', 'Restore from backup…', 'Project', () => importDialog('all'));
+    cmd('project.restoreFile', 'Restore from backup file…', 'Project', async () => {
       const files = await pickFiles({ accept: '.json' }); if (!files[0]) return;
       try { const d = JSON.parse(await files[0].text()); if (!d.quill || !d.projects) throw 0;
         if (!(await confirm('Restore backup?', 'This replaces all current projects, progress and settings.', false))) return;
@@ -892,10 +1004,11 @@
     cmd('edit.multi', 'Add cursor at next match', 'Edit', () => editor.command('multiCursorNext'), 'Ctrl+D');
     cmd('edit.format', 'Format document', 'Edit', async () => { if (!(await editor.format())) toast(editor.kind === 'fallback' ? 'Formatting needs the full editor (online).' : 'No formatter for this language — but indentation is up to you!', 'info'); }, 'Shift+Alt+F');
     cmd('search.all', 'Search in all files', 'Edit', () => showView('search'), 'Ctrl+Shift+F');
-    cmd('view.sidebar', 'Toggle sidebar', 'View', () => { settings.hideSidebar = !settings.hideSidebar; app.classList.toggle('no-sidebar', settings.hideSidebar); saveSettings(); editor.layout(); }, 'Ctrl+B');
-    cmd('view.panel', 'Toggle console panel', 'View', () => { settings.hidePanel = !settings.hidePanel; app.classList.toggle('no-panel', settings.hidePanel); saveSettings(); editor.layout(); }, 'Ctrl+J');
-    cmd('view.right', 'Toggle right panel', 'View', () => { settings.hideRight = !settings.hideRight; app.classList.toggle('no-right', settings.hideRight); app.classList.toggle('show-right', !settings.hideRight); saveSettings(); if (!settings.hideRight) showRight(settings.rview); editor.layout(); }, 'Ctrl+Alt+B');
-    cmd('view.zen', 'Toggle Zen mode', 'View', () => { app.classList.toggle('zen'); toast(app.classList.contains('zen') ? 'Zen mode — press Esc to exit' : 'Zen mode off', 'info', 1400); editor.layout(); }, 'Ctrl+K Z');
+    const relayout = () => { syncLayoutBtns(); editor.layout(); setTimeout(() => editor.layout(), 360); };
+    cmd('view.sidebar', 'Toggle sidebar', 'View', () => { const hidden = app.classList.contains('no-sidebar'); settings.hideSidebar = !hidden; focusHid = false; app.classList.toggle('no-sidebar', settings.hideSidebar); saveSettings(); relayout(); }, 'Ctrl+B');
+    cmd('view.panel', 'Toggle console panel', 'View', () => { settings.hidePanel = !settings.hidePanel; app.classList.toggle('no-panel', settings.hidePanel); saveSettings(); relayout(); }, 'Ctrl+J');
+    cmd('view.right', 'Toggle right panel', 'View', () => { settings.hideRight = !settings.hideRight; app.classList.toggle('no-right', settings.hideRight); app.classList.toggle('show-right', !settings.hideRight); saveSettings(); if (!settings.hideRight) showRight(settings.rview); relayout(); }, 'Ctrl+Alt+B');
+    cmd('view.zen', 'Toggle Zen mode', 'View', () => { app.classList.toggle('zen'); toast(app.classList.contains('zen') ? 'Zen mode — press Esc to exit' : 'Zen mode off', 'info', 1400); relayout(); }, 'Ctrl+K Z');
     cmd('view.explorer', 'Show explorer', 'View', () => showView('files'), 'Ctrl+Shift+E');
     cmd('view.search', 'Show search', 'View', () => showView('search'));
     cmd('view.extensions', 'Show extensions', 'View', () => showView('extensions'));
@@ -960,7 +1073,7 @@
   editor.onCursor((info) => { lastCursor = info; updateStatus(info); if (settings.tutorFollow) Q.tutor.onCursor(info); Q.ext.onCursor(info); });
   editor.onMarkers(debounce(() => updateProblems(), 250));
 
-  Q.app = { reapply: () => editor.applySettings(editorOpts()), settings, editor, exec, openFile, openVirtual, closeVirtual, activate, showRight, showPanel, showView, log, clearConsole, refreshPreview, isVirtual, langOfId, renderTabs, setRunning, updateProblems, cmd, get virtuals() { return virtuals; } };
+  Q.app = { focusLearn, reapply: () => editor.applySettings(editorOpts()), settings, editor, exec, openFile, openVirtual, closeVirtual, activate, showRight, showPanel, showView, log, clearConsole, refreshPreview, isVirtual, langOfId, renderTabs, setRunning, updateProblems, cmd, get virtuals() { return virtuals; } };
 
   Q.ext.init(Q.app);
   Q.tutor.init($('#tutor'));
@@ -977,7 +1090,8 @@
     store.set('welcomed', true);
     setTimeout(() => toast('Welcome to Quill! Open <b>Learn</b> 🎓 on the left to start a course.', 'info', 5000), 600);
   }
-  if (editor.kind === 'fallback') setTimeout(() => toast('Offline mode: using Quill’s built-in editor. Connect to the internet for the full editor.', 'info', 5000), 900);
+  if (editor.kind === 'fallback' && editor.reason === 'offline') setTimeout(() => toast('You’re offline, so Quill is using its built-in editor.', 'info', 4000), 900);
+  syncLayoutBtns();
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
