@@ -1,5 +1,6 @@
-/* Quill — shared helpers */
+/* Codeditor — shared helpers */
 window.Q = window.Q || {};
+Q.APP = 'Codeditor'; // the app's name — change it here
 
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -139,12 +140,13 @@ window.Q = window.Q || {};
   }
 
   /* ---------- Context menu ---------- */
-  function contextMenu(x, y, items) {
+  function contextMenu(x, y, items, cls = '') {
     $$('.ctx').forEach((m) => m.remove());
-    const m = h('div', { class: 'ctx' });
+    const m = h('div', { class: 'ctx ' + cls });
+    if (!items.some((it) => it !== '-' && it.icon)) m.classList.add('noicons');
     items.forEach((it) => {
       if (it === '-') return m.append(h('div', { class: 'ctx-sep' }));
-      m.append(h('button', { class: 'ctx-item' + (it.danger ? ' danger' : ''), html: `${it.icon ? icon(it.icon, 14) : '<span style="width:14px"></span>'}<span>${esc(it.label)}</span>${it.key ? `<kbd>${it.key}</kbd>` : ''}`, onclick: () => { m.remove(); it.action(); } }));
+      m.append(h('button', { class: 'ctx-item' + (it.danger ? ' danger' : ''), html: `<i class="ci">${it.icon ? icon(it.icon, 14) : ''}</i><span class="lbl">${esc(it.label)}</span>${it.key ? `<kbd>${esc(it.key)}</kbd>` : ''}`, onclick: () => { m.remove(); it.action(); } }));
     });
     document.body.append(m);
     const r = m.getBoundingClientRect();

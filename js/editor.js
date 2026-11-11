@@ -1,4 +1,4 @@
-/* Quill — editor adapter: Monaco (VS Code's editor) when online, built-in lightweight editor as an offline fallback */
+/* Codeditor — editor adapter: Monaco (VS Code's editor) when online, built-in lightweight editor as an offline fallback */
 (() => {
   const { h, esc, bus } = Q;
   const MONACO = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
@@ -71,7 +71,7 @@
       for (const [id, m] of models) if (uris.some((u) => u.toString() === m.uri.toString())) markerFns.forEach((f) => f(id));
     });
 
-    // Bridge Quill completion providers into Monaco
+    // Bridge Codeditor completion providers into Monaco
     const registered = new Set();
     function registerFor(lang) {
       if (registered.has(lang)) return; registered.add(lang);
@@ -87,7 +87,7 @@
               suggestions.push({
                 label: it.label, kind: it.kind === 'emmet' ? monaco.languages.CompletionItemKind.Property : monaco.languages.CompletionItemKind.Snippet,
                 insertText: it.insert, insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                detail: it.detail || 'Quill snippet', documentation: it.doc ? { value: it.doc } : undefined,
+                detail: it.detail || 'Codeditor snippet', documentation: it.doc ? { value: it.doc } : undefined,
                 filterText: it.filter || it.label, sortText: it.sort || '0' + it.label,
                 range: { startLineNumber: pos.lineNumber, startColumn: pos.column - len, endLineNumber: pos.lineNumber, endColumn: pos.column },
               });
@@ -302,7 +302,7 @@
           return api;
         } catch (e) {
           reason = e && e.message === 'blocked' ? 'blocked' : 'offline';
-          console.info('Using Quill’s built-in editor (' + reason + ')');
+          console.info('Using the built-in editor (' + reason + ')');
         }
       }
       return makeFallback(host, settings, reason);

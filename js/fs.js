@@ -1,4 +1,4 @@
-/* Quill — virtual file system & projects (persisted in localStorage) */
+/* Codeditor — virtual file system & projects (persisted in localStorage) */
 (() => {
   const { store, uid, bus } = Q;
 
@@ -16,7 +16,7 @@
 </head>
 <body>
   <main class="card">
-    <h1>Hello, Quill! 👋</h1>
+    <h1>Hello, Codeditor! 👋</h1>
     <p>Edit <code>index.html</code>, <code>style.css</code> and <code>script.js</code> — the preview updates as you type.</p>
     <button id="btn">Click me</button>
     <p id="count">Clicks: 0</p>
@@ -188,9 +188,9 @@ console.log('Total:', total);
     blank: { name: 'Blank', desc: 'An empty project', files: { 'README.md': '# New project\n\nStart creating files with the **+** button in the Explorer.\n' }, open: ['README.md'] },
   };
 
-  const WELCOME_MD = `# Welcome to Quill ✒️
+  const WELCOME_MD = `# Welcome to Codeditor ✒️
 
-Quill is a code editor that **teaches you while you code**.
+Codeditor is a code editor that **teaches you while you code**.
 
 - **Learn** (🎓 in the left bar): bite-sized interactive courses for HTML, CSS, JavaScript, Python, TypeScript and quick tours of 10 more languages.
 - **Tutor** (right panel): put your cursor on any keyword, tag or property and get a plain-English explanation.
@@ -212,10 +212,8 @@ Everything saves automatically in your browser. Use **File → Download project*
   }
 
   if (!projects || !Object.keys(projects).length) {
-    const p = makeProject('My First Project', 'web');
-    p.files['WELCOME.md'] = WELCOME_MD;
-    p.tabs = ['WELCOME.md', 'index.html', 'style.css', 'script.js'];
-    p.active = 'WELCOME.md';
+    const p = makeProject('My First Game', 'game');
+    p.tabs = []; p.active = null; // first launch opens on the welcome screen
     projects = { [p.id]: p };
     currentId = p.id;
   }

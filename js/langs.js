@@ -1,4 +1,4 @@
-/* Quill — language registry */
+/* Codeditor — language registry */
 (() => {
   const C = 'abstract as async await break case catch class const continue default delete do else enum export extends false final finally for from function if implements import in instanceof interface let new null of package private protected public return static super switch this throw true try typeof var void while with yield';
   const L = [

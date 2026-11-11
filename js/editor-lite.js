@@ -1,4 +1,4 @@
-/* Quill — built-in editor ("Quill editor").
+/* Codeditor — built-in editor ("Codeditor editor").
    A textarea for input, a highlighted <pre> underneath, and a decoration layer for the current line,
    find matches, bracket pairs, error squiggles and inline messages. Adds autocomplete, find & replace,
    hover tips and a formatter, so it works fully where the Monaco engine can't load. */
@@ -535,7 +535,8 @@
           .replace(/(let|const|var)\s+(\w+)\s*:\s*[\w<>[\]|&\s.'"]+?(?=\s*[=;\n])/g, '$1 $2')
           .replace(/\s+as\s+[\w<>[\]]+/g, '')
           .replace(/(\w)\s*<\s*[A-Z]\w*(?:\s*(?:,|extends)[^>]*)?>\s*(?=\()/g, '$1')
-          .replace(/\b(public|private|protected|readonly)\s+/g, '');
+          .replace(/\b(public|private|protected|readonly)\s+/g, '')
+          .replace(/^(\s*)(?!default\b)(#?\w+)[?!]?\s*:\s*[^=;,\n(){}]+?(?=\s*[=;])/gm, '$1$2'); // class fields: `hp: number = 3;`
       },
       registerLang() {},
       addTabHandler(fn) { keyFns.push((e) => { if (e.key === 'Tab' && !e.shiftKey && ta.selectionStart === ta.selectionEnd && fn()) e.preventDefault(); }); },

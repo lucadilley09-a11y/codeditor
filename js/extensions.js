@@ -1,4 +1,4 @@
-/* Quill — built-in quality-of-life extensions (each can be toggled in the Extensions view) */
+/* Codeditor — built-in quality-of-life extensions (each can be toggled in the Extensions view) */
 (() => {
   const { h, icon, store, debounce, toast, esc } = Q;
   let app = null;

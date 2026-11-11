@@ -1,11 +1,11 @@
-/* Quill — application shell */
+/* Codeditor — application shell */
 (async () => {
   const { $, $$, h, esc, icon, toast, modal, prompt, confirm, contextMenu, download, bus, store, debounce, clamp } = Q;
   const fs = Q.fs;
   const app = document.getElementById('app');
 
   /* ===================== Settings ===================== */
-  const DEFAULTS = { theme: 'quill-night', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, codeFont: 'JetBrains Mono', sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: false, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
+  const DEFAULTS = { theme: 'quill-night', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, codeFont: 'JetBrains Mono', sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: true, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   settings.theme = Q.themes.get(settings.theme).id;
   const EMBED = (() => { try { return window.top !== window; } catch { return true; } })();
@@ -418,7 +418,7 @@
     const act = fs.project.active && fs.exists(fs.project.active) ? fs.project.active : fs.project.tabs[0];
     if (act) activate(act); else { editor.showNothing(); renderTabs(); }
     clearConsole(); refreshPreview(true); lastRunErrors = []; Q.tutor.clearError(); updateProblems();
-    document.title = `${fs.project.name} — Quill`;
+    document.title = `${fs.project.name} — ${Q.APP}`;
   }
 
   /* ===================== Search view ===================== */
@@ -651,8 +651,8 @@
     const id = editor?.activeId;
     $('#sb-lang').textContent = id ? Q.langs.byId[editor.langOf(id) || langOfId(id)]?.name || 'Plain Text' : '';
     $('#sb-pos').textContent = info && id ? `Ln ${info.line}, Col ${info.col}${info.selLength ? ` (${info.selLength} selected)` : ''}` : '';
-    $('#sb-engine').textContent = editor?.kind === 'fallback' ? 'Quill editor' : 'Monaco';
-    $('#sb-engine').title = editor?.kind === 'fallback' ? 'Quill’s built-in editor' : 'Monaco — the editor engine inside VS Code';
+    $('#sb-engine').textContent = editor?.kind === 'fallback' ? 'Codeditor editor' : 'Monaco';
+    $('#sb-engine').title = editor?.kind === 'fallback' ? 'the built-in editor' : 'Monaco — the editor engine inside VS Code';
   }
   bus.on('py:status', (s, err) => {
     const dot = $('#sb-py .pydot'); if (!dot) return;
@@ -718,45 +718,33 @@
   /* ===================== Welcome ===================== */
   function renderWelcome() {
     const w = $('#welcome');
-    const cont = Q.learn.nextLesson();
     const st = Q.learn.state;
     const hr = new Date().getHours();
     const greet = hr < 5 ? 'Up late?' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
     w.innerHTML = '';
     const root = h('div', { class: 'welcome' });
-    root.append(h('div', { class: 'w-hero' }, h('img', { src: 'icon.svg', width: 56, height: 56, alt: '' }), h('div', {}, h('h1', { text: `${greet}. What are we building?` }), h('p', { text: 'Pick up a lesson, start something new, or open a file on the left.' }))));
-    // left column: learning
-    const left = h('div', {});
+    root.append(h('div', { class: 'w-hero' }, h('img', { src: 'icon.svg', width: 44, height: 44, alt: '' }), h('div', {}, h('h1', { text: greet }), h('p', { text: 'Let’s make something.' }))));
+    const cont = st.lang ? Q.learn.nextLesson() : null;
     if (cont) {
       const done = cont.course.lessons.filter((l) => st.done[`${cont.course.id}/${l.id}`]).length;
       const pct = Math.round((done / cont.course.lessons.length) * 100);
-      left.append(h('div', { class: 'w-label', text: 'Continue learning' }), h('div', { class: 'continue-card', role: 'button', tabindex: 0, onclick: () => Q.learn.open(cont.course.id, cont.lesson.id), onkeydown: (e) => e.key === 'Enter' && Q.learn.open(cont.course.id, cont.lesson.id) },
+      root.append(h('div', { class: 'continue-card', role: 'button', tabindex: 0, onclick: () => Q.learn.open(cont.course.id, cont.lesson.id), onkeydown: (e) => e.key === 'Enter' && Q.learn.open(cont.course.id, cont.lesson.id) },
         h('div', { class: 'ring', style: { '--p': pct, '--c': cont.course.color }, html: `<span>${esc(cont.course.badge)}</span>` }),
-        h('div', { style: { minWidth: 0 } }, h('div', { class: 'meta', text: `${cont.course.title} · lesson ${cont.course.lessons.indexOf(cont.lesson) + 1} of ${cont.course.lessons.length}` }), h('div', { class: 'big', text: cont.lesson.title }), h('div', { class: 'meta', text: `${pct}% of the course done · +${cont.lesson.xp || 20} XP` })),
-        h('span', { class: 'go btn primary', html: `Start ${icon('arrowRight', 14)}` })));
+        h('div', { style: { minWidth: 0 } }, h('div', { class: 'meta', text: `${cont.course.title} · lesson ${cont.course.lessons.indexOf(cont.lesson) + 1} of ${cont.course.lessons.length}` }), h('div', { class: 'big', text: cont.lesson.title }), h('div', { class: 'meta', text: `About ${Q.learn.minutes(cont.lesson)} minutes` })),
+        h('span', { class: 'go btn primary', html: `Continue ${icon('arrowRight', 14)}` })));
+    } else {
+      root.append(h('div', { class: 'continue-card', role: 'button', tabindex: 0, onclick: () => Q.learn.showPicker(), onkeydown: (e) => e.key === 'Enter' && Q.learn.showPicker() },
+        h('div', { class: 'ring', style: { '--p': 0 }, html: `<span>${icon('learn', 18)}</span>` }),
+        h('div', { style: { minWidth: 0 } }, h('div', { class: 'big', text: 'Learn to make games' }), h('div', { class: 'meta', text: `Pick a language to start · ${Q.langInfo.list.length} to choose from` })),
+        h('span', { class: 'go btn primary', html: `Choose ${icon('arrowRight', 14)}` })));
     }
-    const lvl = (() => { let l = 1, need = 100, base = 0; while (st.xp >= base + need) { base += need; l++; need = 100 + (l - 1) * 50; } return l; })();
-    left.append(h('div', { class: 'w-stats' },
-      h('div', { class: 'w-stat', html: `<b>${lvl}</b><span>Level · ${st.xp} XP</span>` }),
-      h('div', { class: 'w-stat', html: `<b>${Object.keys(st.done).length}</b><span>Lessons done</span>` }),
-      h('div', { class: 'w-stat', html: `<b>${st.streak.count}</b><span>Day streak</span>` })));
-    left.append(h('div', { class: 'w-label', style: { marginTop: '28px' }, text: 'Start something' }));
-    const act = (ic, title, sub, fn) => h('button', { class: 'w-act', onclick: fn, html: `${icon(ic, 18)}<b>${title}</b><small>${sub}</small>` });
-    left.append(h('div', { class: 'w-actions' },
-      act('filePlus', 'New file', 'HTML, Python, JS, C++… pick any extension', () => exec('file.new')),
-      act('project', 'New project', 'Web page, canvas game, Python or blank', () => exec('project.new')),
-      act('learn', 'Browse courses', `${Q.learn.courses.length} courses and language tours`, () => exec('learn.open')),
-      act('upload', 'Import', 'Paste an export or choose files', () => exec('project.importText'))));
-    // right column: projects + keys
-    const right = h('div', {});
-    right.append(h('div', { class: 'w-label', text: 'Your projects' }));
-    const list = h('div', { class: 'w-recent' });
-    fs.projects.slice(0, 6).forEach((p) => { const n = Object.keys(p.files).length; list.append(h('button', { class: 'w-proj' + (p.id === fs.project.id ? ' on' : ''), onclick: () => (p.id === fs.project.id ? (p.tabs[0] && openFile(p.tabs[0])) : fs.switchProject(p.id)), html: `<span class="pi2">${icon('project', 15)}</span><span><b>${esc(p.name)}</b><small>${n} file${n === 1 ? '' : 's'} · edited ${new Date(p.updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></span>` })); });
-    right.append(list);
-    right.append(h('div', { class: 'w-label', style: { marginTop: '28px' }, text: 'Handy keys' }));
-    const k = (keys) => keys.split(' ').map((x) => `<kbd>${x}</kbd>`).join('');
-    right.append(h('div', { class: 'w-keys', html: [['Ctrl Enter', 'Run your code'], ['Ctrl P', 'Jump to any file'], ['Ctrl Shift P', 'Every command'], ['Ctrl F', 'Find in file'], ['Ctrl /', 'Comment a line'], ['Ctrl J', 'Show or hide the console']].map(([a, b]) => `<span>${k(a)}</span><span>${b}</span>`).join('') }));
-    root.append(left, right);
+    const act = (ic, title, fn) => h('button', { class: 'w-act', onclick: fn, html: `${icon(ic, 16)}<b>${title}</b>` });
+    root.append(h('div', { class: 'w-actions' },
+      act('play', 'New game', () => { fs.createProject('My Game', 'game'); }),
+      act('filePlus', 'New file', () => exec('file.new')),
+      act('project', 'Projects', () => exec('project.switch'))));
+    const recent = fs.projects.slice(0, 3);
+    if (recent.length) root.append(h('div', { class: 'w-recent' }, h('span', { class: 'w-label', text: 'Recent' }), ...recent.map((p) => h('button', { class: 'w-proj', text: p.name, onclick: () => (p.id === fs.project.id ? (p.tabs[0] ? openFile(p.tabs[0]) : (fs.list()[0] && openFile(fs.list()[0]))) : fs.switchProject(p.id)) }))));
     w.append(root);
   }
 
@@ -808,7 +796,7 @@
       h('div', { class: 'set' }, h('button', { class: 'btn ghost', text: 'Reset settings to defaults', onclick: async () => { if (await confirm('Reset settings?', 'Your files and progress stay. Only settings change.', false)) { Object.assign(settings, DEFAULTS); applySettings(); setTheme(DEFAULTS.theme); renderSettings(); } } }))));
   }
   function applySettings() { saveSettings(); editor.applySettings(editorOpts()); updateStatus(); }
-  function setTheme(id) { settings.theme = id; saveSettings(); const t = Q.themes.get(id); Q.themes.applyCss(t); editor.setTheme(id); toast(`Theme: ${t.name}`, 'info', 1200); }
+  function setTheme(id) { if (id !== settings.theme) Q.learn?.badge('stylist'); settings.theme = id; saveSettings(); const t = Q.themes.get(id); Q.themes.applyCss(t); editor.setTheme(id); toast(`Theme: ${t.name}`, 'info', 1200); }
 
   /* ===================== Resizers ===================== */
   function initResizers() {
@@ -872,7 +860,7 @@
     const segHost = h('div', { class: 'seg exp-tabs' });
     const update = (k) => { scope = k; sg.set(k); ta.value = bundle(k); const kb = Math.max(1, Math.round(ta.value.length / 1024)); note.textContent = k === 'all' ? `All ${fs.projects.length} project(s), your lesson progress, XP and settings · ${kb} KB of text.` : `${fs.list().length} file(s) in “${fs.project.name}” · ${kb} KB of text.`; };
     const sg = seg(segHost, [['project', 'This project'], ['all', 'Everything (backup)']], update);
-    const body = h('div', {}, h('p', { html: 'Copy this text and keep it somewhere safe — a Google Doc, a note, or an email to yourself. To bring it back, open Quill on any computer and choose <b>File → Import project from pasted text</b>.' }), segHost, ta, note);
+    const body = h('div', {}, h('p', { html: 'Copy this text and keep it somewhere safe — a Google Doc, a note, or an email to yourself. To bring it back, open Codeditor on any computer and choose <b>File → Import project from pasted text</b>.' }), segHost, ta, note);
     modal({ title: 'Export & share', body, wide: true, buttons: [
       ...(EMBED ? [] : [{ label: 'Download .zip', onclick: () => { download(fs.project.name.replace(/[^\w-]+/g, '-') + '.zip', Q.zip(fs.project.files)); return false; } }]),
       { label: 'Close', value: null },
@@ -887,13 +875,13 @@
       { label: 'Choose files…', onclick: async () => { importFiles(await pickFiles()); } },
       { label: 'Cancel', value: null },
       { label: 'Import', primary: true, onclick: () => {
-        let d; try { d = JSON.parse(ta.value.trim()); } catch { toast('That text isn’t a Quill export. Copy it again from Export & share.', 'error', 3500); return false; }
+        let d; try { d = JSON.parse(ta.value.trim()); } catch { toast('That text isn’t a Codeditor export. Copy it again from Export & share.', 'error', 3500); return false; }
         if (d && d.quill && d.projects) {
           confirm('Restore full backup?', 'This replaces all current projects, progress and settings with the backup.', false).then((ok) => { if (!ok) return; store.set('projects', d.projects); store.set('learn', d.progress || {}); store.set('settings', d.settings || {}); store.set('currentProject', Object.keys(d.projects)[0]); location.reload(); });
           return;
         }
         if (d && d.files && typeof d.files === 'object') { fs.importProject((d.name || 'Imported project') + (fs.projects.some((p) => p.name === d.name) ? ' (copy)' : ''), d.files); toast('Project imported', 'success'); const first = Object.keys(d.files)[0]; if (first) setTimeout(() => openFile(first), 50); return; }
-        toast('That text isn’t a Quill export.', 'error'); return false;
+        toast('That text isn’t a Codeditor export.', 'error'); return false;
       } },
     ] });
     setTimeout(() => ta.focus(), 60);
@@ -906,7 +894,7 @@
     const grid = h('div', { class: 'tpl-grid' });
     Object.entries(fs.TEMPLATES).forEach(([k, t]) => { const b = h('button', { class: 'tpl' + (k === tpl ? ' on' : ''), html: `<b>${esc(t.name)}</b><span>${esc(t.desc)}</span>` }); b.onclick = () => { tpl = k; $$('.tpl', grid).forEach((x) => x.classList.toggle('on', x === b)); }; grid.append(b); });
     const body = h('div', {}, h('p', { text: 'Name' }), name, h('p', { text: 'Template', style: { marginTop: '12px' } }), grid);
-    modal({ title: 'New project', body, wide: true, buttons: [{ label: 'Cancel', value: null }, { label: 'Create project', primary: true, onclick: () => { fs.createProject(name.value.trim() || 'Untitled project', tpl); toast('Project created', 'success'); } }] });
+    modal({ title: 'New project', body, wide: true, buttons: [{ label: 'Cancel', value: null }, { label: 'Create project', primary: true, onclick: () => { fs.createProject(name.value.trim() || 'Untitled project', tpl); toast('Project created', 'success'); if (fs.projects.length >= 3) Q.learn.badge('architect'); } }] });
     setTimeout(() => name.select(), 40);
   }
   function switchProjectDialog() {
@@ -986,7 +974,7 @@
       try { const d = JSON.parse(await files[0].text()); if (!d.quill || !d.projects) throw 0;
         if (!(await confirm('Restore backup?', 'This replaces all current projects, progress and settings.', false))) return;
         store.set('projects', d.projects); store.set('learn', d.progress || {}); store.set('settings', d.settings || {}); store.set('currentProject', Object.keys(d.projects)[0]); location.reload();
-      } catch { toast('That file isn’t a Quill backup.', 'error'); }
+      } catch { toast('That file isn’t a Codeditor backup.', 'error'); }
     });
     cmd('edit.undo', 'Undo', 'Edit', () => editor.command('undo'), 'Ctrl+Z');
     cmd('edit.redo', 'Redo', 'Edit', () => editor.command('redo'), 'Ctrl+Y');
@@ -1045,7 +1033,7 @@
       modal({ title: 'Keyboard shortcuts', wide: true, body: `<table class="keys-table">${rows}${extra}</table>` });
     }, 'Ctrl+K Ctrl+S');
     cmd('help.welcome', 'Show welcome screen', 'Help', () => { editor.showNothing(); renderTabs(); });
-    cmd('help.about', 'About Quill', 'Help', () => modal({ title: 'About Quill', body: `<p><b>Quill</b> — a learn-as-you-code editor.</p><p>Editor engine: ${editor.kind === 'monaco' ? 'Monaco (the editor inside VS Code)' : 'Quill built-in (offline mode)'}<br>Python: Pyodide (CPython compiled to WebAssembly)<br>Languages highlighted: ${Q.langs.list.length} · Courses: ${Q.learn.courses.length}</p><p>Your files, progress and settings are stored only in this browser.</p>` }));
+    cmd('help.about', 'About Codeditor', 'Help', () => modal({ title: 'About Codeditor', body: `<p><b>Codeditor</b> — a learn-as-you-code editor.</p><p>Editor engine: ${editor.kind === 'monaco' ? 'Monaco (the editor inside VS Code)' : 'Codeditor built-in (offline mode)'}<br>Python: Pyodide (CPython compiled to WebAssembly)<br>Languages highlighted: ${Q.langs.list.length} · Courses: ${Q.learn.courses.length}</p><p>Your files, progress and settings are stored only in this browser.</p>` }));
   }
 
   /* ===================== Boot ===================== */
@@ -1086,11 +1074,8 @@
   showRight(settings.rview === 'lesson' && !Q.learn.active ? 'preview' : settings.rview);
   updateProblems();
 
-  if (!store.get('welcomed', false)) {
-    store.set('welcomed', true);
-    setTimeout(() => toast('Welcome to Quill! Open <b>Learn</b> 🎓 on the left to start a course.', 'info', 5000), 600);
-  }
-  if (editor.kind === 'fallback' && editor.reason === 'offline') setTimeout(() => toast('You’re offline, so Quill is using its built-in editor.', 'info', 4000), 900);
+  store.set('welcomed', true);
+  if (editor.kind === 'fallback' && editor.reason === 'offline') setTimeout(() => toast('You’re offline, so Codeditor is using its built-in editor.', 'info', 4000), 900);
   syncLayoutBtns();
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});

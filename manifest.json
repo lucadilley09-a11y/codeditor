@@ -1,6 +1,6 @@
 {
-  "name": "Quill — learn-as-you-code editor",
-  "short_name": "Quill",
+  "name": "Codeditor — learn to code by making games",
+  "short_name": "Codeditor",
   "description": "A browser code editor for 20+ languages with interactive lessons and a live tutor.",
   "start_url": "./",
   "scope": "./",

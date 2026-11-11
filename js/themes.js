@@ -1,13 +1,13 @@
-/* Quill — themes (UI colors + syntax colors, shared by Monaco and the fallback editor) */
+/* Codeditor — themes (UI colors + syntax colors, shared by Monaco and the fallback editor) */
 (() => {
   const T = [
     {
-      id: 'quill-night', name: 'Quill Night', dark: true,
+      id: 'quill-night', name: 'Codeditor Dark', dark: true,
       ui: { shell: '#0a0d13', bg: '#10141c', bg2: '#141923', bg3: '#1a202c', bg4: '#232a39', border: '#212837', text: '#e8ebf1', text2: '#aab2c2', muted: '#6c7588', accent: '#f2b544', onAccent: '#1d1405', accent2: '#5cc8e4', good: '#4ade80', warn: '#fb923c', bad: '#f87171', sel: '#f2b54430', line: '#ffffff07' },
       syn: { keyword: '#c9a3ff', string: '#a6dba0', number: '#f6a96a', comment: '#5b6477', func: '#7db7ff', type: '#f2cc60', variable: '#e8ebf1', tag: '#ff8f85', attr: '#f2cc60', operator: '#8bd5e8', constant: '#f6a96a', prop: '#7db7ff' },
     },
     {
-      id: 'quill-day', name: 'Quill Day', dark: false,
+      id: 'quill-day', name: 'Codeditor Light', dark: false,
       ui: { shell: '#e9ebf0', bg: '#ffffff', bg2: '#f7f8fa', bg3: '#eff1f5', bg4: '#e4e7ed', border: '#dfe3ea', text: '#1a1e27', text2: '#4a5263', muted: '#8a92a3', accent: '#e0a12a', onAccent: '#1d1405', accent2: '#0e7490', good: '#15803d', warn: '#c2410c', bad: '#dc2626', sel: '#e0a12a33', line: '#00000005' },
       syn: { keyword: '#7c3aed', string: '#15803d', number: '#c2410c', comment: '#9aa1b0', func: '#1d4ed8', type: '#a16207', variable: '#1a1e27', tag: '#dc2626', attr: '#a16207', operator: '#0e7490', constant: '#c2410c', prop: '#1d4ed8' },
     },

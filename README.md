@@ -1,6 +1,6 @@
-# Quill ✒️ — a code editor that teaches you to code
+# Codeditor ✒️ — a code editor that teaches you to code
 
-Quill is a browser-based code editor for 20+ languages with interactive lessons, a live tutor, and a big set of quality-of-life extensions. It runs entirely in your browser and can be installed as an app.
+Codeditor is a browser-based code editor for 20+ languages with interactive lessons, a live tutor, and a big set of quality-of-life extensions. It runs entirely in your browser and can be installed as an app.
 
 **Open it:** https://lucadilley09-a11y.github.io/codeditor/
 

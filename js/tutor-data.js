@@ -1,4 +1,4 @@
-/* Quill — Tutor knowledge base. Each entry: [kind, explanation, example, tip?] */
+/* Codeditor — Tutor knowledge base. Each entry: [kind, explanation, example, tip?] */
 (() => {
   const js = {
     let: ['keyword', 'Creates a <b>variable</b> whose value can change later. Lives only inside the nearest <code>{ }</code> block.', 'let score = 0;\nscore = score + 10;', 'Prefer <code>const</code> unless you know the value will change.'],
@@ -32,7 +32,7 @@
     undefined: ['value', 'The value of something that hasn’t been given a value yet.', 'let x;\nconsole.log(x); // undefined'],
     true: ['value', 'One of the two <b>boolean</b> values. Conditions evaluate to true or false.', 'let isReady = true;'],
     false: ['value', 'One of the two <b>boolean</b> values.', 'let gameOver = false;'],
-    console: ['object', 'Gives you tools to print messages for debugging. Output shows in Quill’s Console panel.', 'console.log("Hello");\nconsole.warn("Careful");\nconsole.error("Oops");'],
+    console: ['object', 'Gives you tools to print messages for debugging. Output shows in Codeditor’s Console panel.', 'console.log("Hello");\nconsole.warn("Careful");\nconsole.error("Oops");'],
     log: ['method', '<code>console.log()</code> prints values to the console — your #1 debugging tool.', 'console.log("score:", score);'],
     document: ['object', 'The web page itself. Use it to find, create and change HTML elements.', 'document.querySelector("h1").textContent = "Hi!";'],
     querySelector: ['method', 'Finds the <b>first</b> element matching a CSS selector.', 'const btn = document.querySelector("#play");\nconst firstItem = document.querySelector(".item");'],
@@ -120,7 +120,7 @@
     in: ['keyword', 'Used in loops (<code>for x in ...</code>) and to test membership.', '"a" in "cat"   # True\n3 in [1, 2, 3]   # True'],
     range: ['function', 'Makes a sequence of numbers. <code>range(5)</code> is 0,1,2,3,4. <code>range(1, 6)</code> is 1–5.', 'for i in range(3):\n    print(i)  # 0 1 2'],
     len: ['function', 'Returns how many items something has.', 'len([1, 2, 3])  # 3\nlen("hello")     # 5'],
-    input: ['function', 'Asks the user to type something. Always returns a string. In Quill, type answers in the console’s Input box before running.', 'name = input("Name? ")'],
+    input: ['function', 'Asks the user to type something. Always returns a string. In Codeditor, type answers in the console’s Input box before running.', 'name = input("Name? ")'],
     int: ['function', 'Converts to a whole number.', 'int("42")  # 42\nint(3.9)   # 3'],
     str: ['function', 'Converts to text.', 'str(42)  # "42"'],
     float: ['function', 'Converts to a decimal number.', 'float("3.5")  # 3.5'],

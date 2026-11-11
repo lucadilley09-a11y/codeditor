@@ -1,8 +1,8 @@
 /* Quill service worker: caches the app so it opens offline. CDN assets (editor engine, Python) are cached after first use. */
-const VERSION = 'quill-v3';
+const VERSION = 'cd-v5';
 const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.json',
   'js/util.js', 'js/langs.js', 'js/themes.js', 'js/fs.js', 'js/editor-lite.js', 'js/editor.js', 'js/runner.js', 'js/tutor-data.js', 'js/tutor.js',
-  'js/courses/web.js', 'js/courses/javascript.js', 'js/courses/python.js', 'js/courses/more.js', 'js/learn.js', 'js/extensions.js', 'js/app.js'];
+  'js/langinfo.js', 'js/courses/_kit.js', 'js/courses/web.js', 'js/courses/game.js', 'js/courses/javascript.js', 'js/courses/python.js', 'js/courses/more.js', 'js/courses/more2.js', 'js/learn.js', 'js/extensions.js', 'js/app.js'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION && k !== 'quill-cdn').map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

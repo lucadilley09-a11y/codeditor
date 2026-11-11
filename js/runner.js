@@ -1,4 +1,4 @@
-/* Quill — code runners: web preview, JavaScript (worker), TypeScript, Python (Pyodide worker) */
+/* Codeditor — code runners: web preview, JavaScript (worker), TypeScript, Python (Pyodide worker) */
 (() => {
   const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
 
