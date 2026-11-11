@@ -28,5 +28,10 @@
   };
   // run a JS solution's function in isolation: fn(code, 'name') -> function or null
   const grab = (code, name) => { try { return new Function(code.replace(/console\.log/g, '(()=>{})') + `\n;return typeof ${name} !== 'undefined' ? ${name} : undefined;`)(); } catch { return undefined; } };
-  Q.kit = { e, tip, pre, tryit, read, quiz, predict, code, review, course, lines, expectLines, grab, strip };
+  // extend: insert extra lessons into an existing course, right after the lesson `after` (null = at the start, '$' = at the end)
+  const find = (id) => { const c = (Q.courses || []).find((x) => x.id === id); if (!c) throw new Error('No course ' + id); return c; };
+  const extend = (id, after, lessons) => { const c = find(id); const i = after === '$' ? c.lessons.length : after == null ? 0 : c.lessons.findIndex((l) => l.id === after) + 1; if (after && after !== '$' && i === 0) throw new Error(`No lesson ${id}/${after}`); c.lessons.splice(i, 0, ...lessons); };
+  // addSteps: append extra steps (usually more practice) to an existing lesson
+  const addSteps = (id, lessonId, steps) => { const l = find(id).lessons.find((x) => x.id === lessonId); if (!l) throw new Error(`No lesson ${id}/${lessonId}`); l.steps.push(...steps); };
+  Q.kit = { e, tip, pre, tryit, read, quiz, predict, code, review, course, lines, expectLines, grab, strip, extend, addSteps };
 })();

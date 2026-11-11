@@ -126,6 +126,7 @@
   const hasCode = (l) => l.steps.some((s) => s.type === 'code');
 
   function lockedBy(course, lesson) {
+    if (state.done[key(course.id, lesson.id)]) return null; // finished lessons never lock, even if new ones were added before them
     const i = course.lessons.indexOf(lesson);
     const first = course.lessons.findIndex((l) => !state.done[key(course.id, l.id)]);
     return first >= 0 && i > first ? course.lessons[first] : null;
