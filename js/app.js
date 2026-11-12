@@ -678,7 +678,7 @@
     L.append(h('button', { class: 'sbi', id: 'sb-problems', title: 'Problems', onclick: () => showPanel('problems') }));
     L.append(h('button', { class: 'sbi', id: 'sb-py', title: 'Python runtime (click for a check-up)', html: '<i class="pydot"></i>Python', onclick: () => { showPanel('console'); Q.runner.pyDiag((t) => log('sys', t)); } }));
     L.append(h('span', { class: 'sbi', id: 'sb-engine', title: '' }));
-    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 12', style: { opacity: '.55' } }));
+    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 13', style: { opacity: '.55' } }));
     R.append(h('div', { id: 'sb-ext', style: { display: 'flex', height: '100%' } }));
     R.append(h('button', { class: 'sbi', id: 'sb-pos', title: 'Go to line (Ctrl+G)', onclick: () => exec('edit.gotoLine') }));
     R.append(h('button', { class: 'sbi', id: 'sb-tab', title: 'Indentation', onclick: () => exec('settings.tabSize') }));

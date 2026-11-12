@@ -6,7 +6,7 @@
 (() => {
   const { G, hash, levels, packs } = Q.gen;
   const TARGET = { js: 80, py: 80, cs: 80, lua: 80, cpp: 80, game: 40, dom: 24, html: 40, css: 40 };
-  const VARIANTS = [['Practice', null], ['Drill', 'write'], ['Bug hunt', 'fix'], ['Predict it', 'predict'], ['Fill the gaps', 'fill'], ['Mixed review', null], ['Remix', null]];
+  const VARIANTS = [['Practice', null], ['Drill', 'write'], ['Bug hunt', 'fix'], ['Predict it', 'predict'], ['Fill the gaps', 'fill'], ['Mixed review', null], ['Arrange it', 'order'], ['Remix', null], ['Spot the bug', 'spot'], ['Output check', 'output'], ['Fill the boxes', 'fill2']];
   const short = (t) => t.replace(/^(Project|Unit project|Capstone|Final project):\s*/i, '');
   const skillsOf = (tpls) => [...new Set(tpls.map((t) => t.skill))];
   const UNIT = 9;
@@ -16,6 +16,20 @@
     Object.defineProperty(L, 'steps', { configurable: true, enumerable: true,
       get() { const v = L.regen(seed); Object.defineProperty(L, 'steps', { value: v, writable: true, configurable: true, enumerable: true }); return v; },
       set(v) { Object.defineProperty(L, 'steps', { value: v, writable: true, configurable: true, enumerable: true }); } });
+  }
+  // can these templates actually make a whole themed lesson of this type?
+  const themeCache = new Map();
+  function canTheme(cid, tpls, bias) {
+    const base = Q.gen.BASE[bias] || bias;
+    const of = tpls.filter((t) => t.kind === base);
+    if (!Q.gen.BASE[bias] || bias === 'output' || bias === 'order' || bias === 'fill2') return of.length >= 2;
+    let ok = 0;
+    for (const t of of) {
+      const k = cid + '/' + t.id + '/' + bias;
+      if (!themeCache.has(k)) { let v = false; try { const st = Q.gen.make(cid, t, 12345, false); v = !!(st && Q.gen.derive(st, bias, G(7))); } catch {} themeCache.set(k, v); }
+      if (themeCache.get(k) && ++ok >= 2) return true;
+    }
+    return false;
   }
   function buildCourse(c) {
     const p = packs[c.id]; if (!p || c.built) return;
@@ -65,7 +79,8 @@
     hand.forEach((L, i) => {
       seq.push(L);
       for (let j = 0; j < extra[i]; j++) {
-        const [vname, bias] = VARIANTS[(i * 3 + j) % VARIANTS.length];
+        let [vname, bias] = VARIANTS[(i * 3 + j) % VARIANTS.length];
+        if (bias && !canTheme(c.id, avail(i), bias)) [vname, bias] = ['Mixed review', null];
         const P = { id: `${L.id}~p${j + 1}`, title: `${vname}: ${short(L.title)}`, xp: 15, gen: 'practice', ai: i,
           recap: 'Generated practice — the levels are new every time you open this lesson.',
           regen: (seed) => {

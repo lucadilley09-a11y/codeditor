@@ -62,16 +62,14 @@
 /* ---------- "What's new" after an update + weekly backup reminder ---------- */
 (() => {
   const { h, store, icon } = Q;
-  const BUILD = '12';
+  const BUILD = '13';
   const NEW = [
-    ['Bundled editor & Python', 'The full editor and Python now load inside the claude.ai page, and work offline on the GitHub Pages version.'],
-    ['Step-by-step explanations', 'Miss a “What will this print?” level? See it run line by line. Miss a bug fix? See exactly what was wrong.'],
-    ['Sandbox', 'A scratch space for every language — and “Sandbox” on lesson levels copies the code there to play with.'],
-    ['Asset pack', 'Pixel sprites and sound effects for your games, plus your own uploads (Explorer → palette icon).'],
-    ['Share as a link', 'File → Share project as a link. The whole project fits in the link.'],
-    ['Bug journal & mistake heatmap', 'Bugs you fix are saved and come back in the refresher. Stats shows which mistakes you make most.'],
-    ['New lessons', 'More C#, Unity, Lua/Roblox, C++/raylib, HTML and CSS lessons.'],
-    ['Shortcuts', 'Press 1–4 to answer, Enter to continue.'],
+    ['4 new level types', 'Arrange the lines, Click the buggy line, Type the output, and True or false.'],
+    ['No more repeats', 'Levels never repeat inside a lesson, the same type never comes twice in a row, and levels you saw recently are skipped.'],
+    ['Fill-in boxes', 'No more ____ — blanks are highlighted boxes. You start typing in the first one, and Tab jumps to the next.'],
+    ['Themed practice', 'New practice lessons: Arrange it, Spot the bug, Output check and Fill the boxes.'],
+    ['Practise your mistakes', 'Stats → “Practise my mistakes” builds levels for the mistakes you make most.'],
+    ['Combos', 'Get levels right first try in a row for bonus XP — and a new badge at ×8.'],
   ];
   function card(cls, title, body, actions) {
     document.querySelector('.notice.' + cls)?.remove();

@@ -81,6 +81,8 @@
         if (key === 'bm') return;
         list.forEach((x) => {
           const t = ls[x.line - 1]; if (t == null) return;
+          if (x.after && x.start) { out += `<div class="fb-mark ${x.className}" style="top:${PT + (x.line - 1) * lh}px;left:${PL + vcol(t, x.start - 1) * cw}px;width:${Math.max(6, 1.2 * cw)}px"></div>`; return; }
+          if (x.className === 'blank-fill') { out += box('blank-fill', x.line, vcol(t, (x.start || 1) - 1), vcol(t, (x.end || t.length + 1) - 1)); return; }
           if (x.after) { top += `<div class="fb-after ${x.className.replace('errlens-', '')}" style="top:${PT + (x.line - 1) * lh}px;left:${PL + vcol(t, t.length) * cw}px">${esc(x.after)}</div>`; return; }
           if (x.className && /todo|fixme|note/.test(x.className)) out += box('todo', x.line, vcol(t, (x.start || 1) - 1), vcol(t, (x.end || t.length + 1) - 1));
         });
@@ -473,6 +475,7 @@
         if (st) ta.setSelectionRange(s + shift(st[0]), s + shift(st[1])); else ta.setSelectionRange(s + text.length, s + text.length);
         fireCursor();
       },
+      select(l1, c1, l2, c2) { const a = lcToPos(l1, c1), b = lcToPos(l2, c2); ta.focus(); ta.setSelectionRange(a, b); syncScroll(); fireCursor(); queueDeco(); },
       reveal(line, col = 1) {
         const pos = lcToPos(line, col); ta.focus(); ta.setSelectionRange(pos, pos);
         const top = PT + (line - 1) * lh; if (top < ta.scrollTop || top > ta.scrollTop + ta.clientHeight - lh * 2) ta.scrollTop = Math.max(0, top - ta.clientHeight / 3);

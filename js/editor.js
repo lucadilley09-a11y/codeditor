@@ -185,6 +185,7 @@
         ed.revealLineInCenterIfOutsideViewport(lastLine); ed.focus();
       },
       insertSnippet(snippet) { const c = ed.getContribution('snippetController2'); if (c) c.insert(snippet); else api.insert(snippet); ed.focus(); },
+      select(l1, c1, l2, c2) { ed.setSelection(new monaco.Range(l1, c1, l2, c2)); ed.revealRangeInCenterIfOutsideViewport(new monaco.Range(l1, c1, l2, c2)); ed.focus(); },
       reveal(line, col = 1) { ed.revealLineInCenter(line); ed.setPosition({ lineNumber: line, column: col }); ed.focus(); },
       selection() { const m = ed.getModel(); const s = ed.getSelection(); return m && s ? m.getValueInRange(s) : ''; },
       command(name) {
@@ -209,8 +210,9 @@
         const n = m.getLineCount();
         decos.set(k, m.deltaDecorations(decos.get(k) || [], list.filter((d) => d.line <= n).map((d) => {
           const lineLen = m.getLineMaxColumn(d.line);
-          const range = d.after ? new monaco.Range(d.line, lineLen, d.line, lineLen) : new monaco.Range(d.line, d.start || 1, d.line, d.end || lineLen);
-          return { range, options: d.after ? { afterContentClassName: afterClass(d.after, d.className) } : { inlineClassName: d.className, isWholeLine: !!d.whole } };
+          const at = d.after && d.start ? Math.min(d.start, lineLen) : lineLen;
+          const range = d.after ? new monaco.Range(d.line, at, d.line, at) : new monaco.Range(d.line, d.start || 1, d.line, d.end || lineLen);
+          return { range, options: d.after ? { [d.start ? 'beforeContentClassName' : 'afterContentClassName']: afterClass(d.after, d.className), stickiness: 1 } : { inlineClassName: d.className, isWholeLine: !!d.whole } };
         })));
       },
       cursorCoords() {

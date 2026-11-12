@@ -857,3 +857,35 @@ button.hc-item:hover { background: var(--bg3); }
   #panel { height: min(var(--panel-h), 30%); }
   #right { height: 48vh; }
 }
+
+/* ---------- fill-in boxes ---------- */
+.monaco-editor .blank-empty::after { display: inline-block; min-width: 2.2ch; border-radius: 4px; background: color-mix(in srgb, var(--accent) 22%, transparent); outline: 1.5px dashed color-mix(in srgb, var(--accent) 75%, transparent); outline-offset: -1px; animation: blankPulse 1.6s ease-in-out infinite; }
+.monaco-editor .blank-fill { background: color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 3px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+.fb-mark.blank-empty { background: color-mix(in srgb, var(--accent) 26%, transparent); outline: 1.5px dashed var(--accent); border-radius: 3px; animation: blankPulse 1.6s ease-in-out infinite; }
+.fb-mark.blank-fill { background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 3px; }
+@keyframes blankPulse { 50% { outline-color: color-mix(in srgb, var(--accent) 35%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .monaco-editor .blank-empty::after, .fb-mark.blank-empty { animation: none; } }
+
+/* ---------- new level types ---------- */
+.order-list { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.order-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); cursor: grab; transition: transform .12s, border-color .12s, background .12s; }
+.order-row code { flex: 1; white-space: pre; font-family: var(--mono); font-size: 13px; overflow-x: auto; background: none; }
+.order-row.drag { opacity: .45; } .order-row.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+.order-row.wrongpos { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, var(--bg2)); }
+.or-grip { color: var(--muted); letter-spacing: -2px; user-select: none; } .or-btns { display: flex; gap: 2px; }
+.lines-view { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 10px 0; background: var(--bg2); }
+.lv-line { display: flex; gap: 10px; width: 100%; text-align: left; padding: 3px 10px; border: 0; background: none; color: inherit; font: inherit; border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+.lv-line:last-child { border-bottom: 0; }
+.lv-line code { white-space: pre; font-family: var(--mono); font-size: 13px; background: none; }
+.lv-n { color: var(--muted); font-family: var(--mono); font-size: 12px; min-width: 2ch; text-align: right; }
+.lines-view.clickable .lv-line { cursor: pointer; } .lines-view.clickable .lv-line:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.lv-line.right { background: color-mix(in srgb, var(--good) 18%, transparent); } .lv-line.wrong { background: color-mix(in srgb, var(--bad) 14%, transparent); opacity: .8; }
+.input.typeout { width: 100%; font-family: var(--mono); margin-top: 8px; resize: vertical; }
+.tf-claim { margin: 10px 0 4px; font-weight: 600; }
+.qopts.tf { grid-template-columns: 1fr 1fr; }
+.combo-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--warn); padding: 1px 8px; border-radius: 99px; background: color-mix(in srgb, var(--warn) 14%, transparent); }
+/* phone: levels without code (quizzes, arrange, spot the bug…) get the whole screen */
+@media (max-width: 680px) {
+  #app.step-nocode.show-right #center { position: absolute; left: 52px; right: 6px; top: 0; height: 50vh; visibility: hidden; pointer-events: none; }
+  #app.step-nocode.show-right #right { grid-row: 1 / 3; height: auto; }
+}

@@ -116,30 +116,117 @@
   function weighted(g, list, courseId) { const ws = list.map((t) => weight(courseId, t)); let x = g.r() * ws.reduce((a, b) => a + b, 0); for (let i = 0; i < list.length; i++) { x -= ws[i]; if (x <= 0) return list[i]; } return list[list.length - 1]; }
 
   /* pick n levels from a template pool, keeping kinds varied and avoiding repeats where possible */
-  function levels(courseId, pool, n, seed, { focus = [], focusShare = 0.6, bias, hard: forceHard, kinds } = {}) {
+  /* ---------- new level types, made from existing templates (so every language gets them) ---------- */
+  // write → order (arrange lines) / fill2 (several blanks); fix → spot (click the buggy line); predict → typeout / tf
+  const DERIVE = { write: ['write', 'write', 'order', 'fill2'], fix: ['fix', 'fix', 'spot'], predict: ['predict', 'typeout', 'tf'], fill: ['fill'], quiz: ['quiz'] };
+  const BASE = { order: 'write', fill2: 'write', spot: 'fix', typeout: 'predict', tf: 'predict', output: 'predict' };
+  const KW = new Set('if else elif for while do return function def let const var local end then in of and or not new class public private static void int float double bool string true false True False None null nil self this print echo import from using include std cout endl auto break continue switch case default try catch except'.split(' '));
+  const plainTask = (t) => String(t || '').replace(/^<b>[^<]*<\/b>\s*(—\s*replace <code>____<\/code>\.\s*)?/, '');
+  function derive(step, vk, g) {
+    if (!step || vk === step.type || vk === step.gkind) return step;
+    const keep = { tag: step.tag.replace(/ · [^·]+$/, '') + ' · ' + ({ order: 'Arrange', fill2: 'Fill the boxes', spot: 'Spot the bug', typeout: 'Type the output', tf: 'True or false' }[vk]), tpl: step.tpl, generated: true, seed: step.seed, gkind: vk, vkind: vk };
+    if (vk === 'order' && step.type === 'code' && step.solution) {
+      const lines = step.solution.replace(/\s+$/, '').split('\n').filter((l) => l.trim());
+      if (lines.length < 3 || lines.length > 10 || new Set(lines.map((l) => l.trim())).size < 3) return null;
+      let sh = lines; for (let k = 0; k < 8 && sh.join('\n') === lines.join('\n'); k++) sh = g.shuffle(lines);
+      if (sh.join('\n') === lines.join('\n')) return null;
+      return { type: 'order', task: `<b>Put the lines in order</b> so the code does this: ${plainTask(step.task)}`, lines: sh, solution: lines.join('\n') + '\n', check: step.check, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
+    }
+    if (vk === 'fill2' && step.type === 'code' && step.solution) {
+      const lines = step.solution.split('\n');
+      const cands = [];
+      lines.forEach((l, i) => { if (!l.trim() || /^\s*(\/\/|#|--|<!--)/.test(l)) return; const re = /"[^"\n]{1,24}"|'[^'\n]{1,24}'|\b\d+(?:\.\d+)?\b|[A-Za-z_][\w]*(?=\s*\()|[A-Za-z_]\w{1,}/g; let m; const here = []; while ((m = re.exec(l))) { const t = m[0]; if (KW.has(t) || t.length > 26) continue; here.push({ i, at: m.index, t }); } if (here.length) cands.push(g.pick(here)); });
+      if (cands.length < 2) return null;
+      const pick = g.shuffle(cands).slice(0, Math.min(3, cands.length)).sort((a, b) => a.i - b.i);
+      const out = lines.slice(); const answers = [];
+      pick.forEach((c) => { out[c.i] = out[c.i].slice(0, c.at) + '____' + out[c.i].slice(c.at + c.t.length); answers.push(c.t); });
+      const base = step.check;
+      return { type: 'code', task: `<b>Fill in the ${pick.length} boxes</b> so the code does this: ${plainTask(step.task)}`, starter: out.join('\n'), solution: step.solution, blanks: answers, hints: [`There are ${pick.length} boxes. Read the task, then work out what each box needs. Press <b>Tab</b> to jump to the next box.`, `The boxes are: ${answers.map((a) => `<code>${esc(a)}</code>`).join(', ')}`], check: base, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
+    }
+    if (vk === 'spot' && step.type === 'code' && step.starter != null && step.solution) {
+      const A = step.starter.replace(/\s+$/, '').split('\n'), B = step.solution.replace(/\s+$/, '').split('\n');
+      if (A.length !== B.length || A.length < 2) return null;
+      const diff = A.map((l, i) => (l.trim() !== (B[i] || '').trim() ? i : -1)).filter((i) => i >= 0);
+      if (diff.length !== 1) return null;
+      return { type: 'spot', task: `<b>Click the line with the bug.</b> ${plainTask(step.task)}`, code: A.join('\n'), bad: diff[0], fixed: B[diff[0]], solution: step.solution, ...keep };
+    }
+    if ((vk === 'typeout' || vk === 'tf') && step.type === 'predict' && step.code) {
+      const ans = String(step.options[step.answer]);
+      if (vk === 'typeout') return { type: 'typeout', q: 'Type exactly what this prints:', code: step.code, answer: ans, explain: step.explain, ...keep };
+      const truth = g.chance(0.5); const wrongs = step.options.filter((_, i) => i !== step.answer);
+      const shown = truth || !wrongs.length ? ans : String(g.pick(wrongs));
+      return { type: 'tf', q: 'True or false?', code: step.code, claim: shown, truth: shown === ans, actual: ans, explain: step.explain, ...keep };
+    }
+    return null;
+  }
+  // what makes two levels "the same" (identical text = a repeat)
+  const sig = (s) => [s.type, s.vkind || '', s.code || s.starter || (s.lines || []).join('\n') || '', s.q || '', s.task || '', s.claim || ''].join('\u0001');
+  const sigHash = (s) => hash(sig(s)).toString(36);
+
+  /* pick n levels: no identical level twice, never the same template or level type twice in a row, avoid recently seen ones */
+  function levels(courseId, pool, n, seed, { focus = [], focusShare = 0.6, bias, hard: forceHard, kinds, variety = true } = {}) {
     const g = G(seed);
-    let usable = kinds ? pool.filter((t) => kinds.includes(t.kind)) : pool;
+    let usable = kinds ? pool.filter((t) => kinds.includes(t.kind) || kinds.some((k) => BASE[k] === t.kind)) : pool;
     if (!usable.length) usable = pool;
+    const virtual = bias && BASE[bias];
     const foc = focus.filter((t) => usable.includes(t));
-    const out = []; const used = new Map();
-    for (let i = 0; i < n && usable.length; i++) {
+    const recent = new Set(st()?.recentLv || []);
+    const out = []; const used = new Map(); const seen = new Set(); const dead = new Set();
+    let prevT = null, prevK = null, tries = 0;
+    const isBias = (k) => k === bias || (bias === 'output' && (k === 'typeout' || k === 'tf'));
+    const kindsFor = (t) => {
+      let all = variety && DERIVE[t.kind] ? DERIVE[t.kind] : [t.kind];
+      if (kinds) { const ks = kinds.flatMap((k) => (k === 'output' ? ['typeout', 'tf'] : [k])); const f = all.filter((k) => ks.includes(k)); if (f.length) all = f; }
+      return all;
+    };
+    while (out.length < n && tries < n * 12 && usable.length) {
+      tries++;
+      const strict = tries < n * 8; // never the same level type twice in a row (relaxed only if we run out of options)
+      // themed lessons: the theme type on every other level (it can't be back-to-back), mixed in between
+      const wantTheme = bias && !isBias(prevK) && g.r() < (virtual ? 0.95 : 0.7);
       let from = foc.length && g.r() < focusShare ? foc : usable;
-      if (bias && g.r() < 0.5) { const b = from.filter((t) => t.kind === bias); if (b.length) from = b; }
-      // prefer templates not used yet in this set
-      const fresh = from.filter((t) => (used.get(t.id) || 0) === 0);
-      const t = weighted(g, fresh.length ? fresh : from, courseId);
+      if (wantTheme) { const b = usable.filter((t) => t.kind === (BASE[bias] || bias)); if (b.length) from = b; }
+      let cand = from.filter((t) => !dead.has(t.id) && t.id !== prevT && kindsFor(t).some((k) => k !== prevK));
+      if (!cand.length) cand = usable.filter((t) => !dead.has(t.id) && t.id !== prevT && kindsFor(t).some((k) => k !== prevK));
+      if (!cand.length && !strict) cand = usable.filter((t) => !dead.has(t.id));
+      if (!cand.length) { if (strict) continue; break; }
+      const fresh = cand.filter((t) => (used.get(t.id) || 0) === 0);
+      const twice = cand.filter((t) => (used.get(t.id) || 0) < 2);
+      const t = weighted(g, fresh.length ? fresh : twice.length ? twice : cand, courseId);
+      // which level types to try for this template, best first
+      let opts = kindsFor(t);
+      if (virtual && BASE[bias] === t.kind) opts = wantTheme ? (bias === 'output' ? g.shuffle(['typeout', 'tf']) : [bias]) : g.shuffle(opts.filter((k) => !isBias(k)));
+      else opts = g.shuffle(opts);
+      opts = opts.filter((k) => k !== prevK || !strict);
+      if (!opts.length) { if (!strict) opts = [t.kind]; else continue; }
+      let made = null;
+      for (const vk of opts) {
+        for (let a = 0; a < 5 && !made; a++) {
+          const base = make(courseId, t, (seed + (out.length + tries) * 7919 + a * 104729 + hash(t.id)) >>> 0, forceHard ?? isHard(courseId, t));
+          if (!base) break;
+          const s = vk === t.kind ? base : derive(base, vk, g);
+          if (!s) break; // this template can't become that type — try the next type
+          const k = sig(s);
+          if (seen.has(k)) continue;
+          if (a < 3 && recent.has(sigHash(s))) continue;
+          made = s; seen.add(k);
+        }
+        if (made) break;
+      }
+      if (!made) { if (!opts.includes(t.kind) || !wantTheme) dead.add(t.id); continue; }
+      if (!made.vkind) made.vkind = made.gkind || t.kind;
       used.set(t.id, (used.get(t.id) || 0) + 1);
-      const s = make(courseId, t, (seed + i * 7919 + hash(t.id)) >>> 0, forceHard ?? isHard(courseId, t));
-      if (s) out.push(s);
+      prevT = t.id; prevK = made.vkind;
+      out.push(made);
     }
     return out;
   }
   // another version of the same level (for "missed levels come back later")
   function again(courseId, step) {
     const t = packs[courseId]?.templates.find((x) => x.id === step.tpl); if (!t) return null;
-    const s = make(courseId, t, freshSeed(), false); if (s) { s.retry = true; s.tag = s.tag + ' · retry'; }
+    const base = make(courseId, t, freshSeed(), false); const s = step.vkind ? derive(base, step.vkind, G(freshSeed())) || base : base; if (s) { s.retry = true; s.tag = s.tag + ' · retry'; }
     return s;
   }
 
-  Q.gen = { G, hash, freshSeed, options, near, pack, packs, make, levels, again, record, skill, isHard, esc, POOL };
+  Q.gen = { derive, sig, sigHash, DERIVE, BASE, G, hash, freshSeed, options, near, pack, packs, make, levels, again, record, skill, isHard, esc, POOL };
 })();
