@@ -160,7 +160,19 @@
     };
     pyWorker.onerror = (e) => { e.preventDefault(); pyState = 'error'; Q.bus.emit('py:status', pyState, e.message || 'Could not load Python (are you offline?)'); pyReadyWaiters.forEach((f) => f(false)); pyReadyWaiters = []; pyWorker && pyWorker.terminate(); pyWorker = null; };
   }
-  function pyReady() { ensurePy(); return pyState === 'ready' ? Promise.resolve(true) : new Promise((r) => pyReadyWaiters.push(r)); }
+  function pyReady(limit = 60000) {
+    ensurePy();
+    if (pyState === 'ready') return Promise.resolve(true);
+    return new Promise((r) => {
+      let settled = false; const fin = (v) => { if (!settled) { settled = true; clearTimeout(t); r(v); } };
+      const t = setTimeout(() => { // loading hung (slow or blocked network): give up and reset so the next try starts fresh
+        pyReadyWaiters = pyReadyWaiters.filter((f) => f !== fin);
+        if (pyState === 'loading' && !pyReadyWaiters.length) { pyWorker && pyWorker.terminate(); pyWorker = null; pyState = 'error'; Q.bus.emit('py:status', 'error', 'Python took too long to load'); }
+        fin(false);
+      }, limit);
+      pyReadyWaiters.push(fin);
+    });
+  }
 
   async function runPython(code, { onEvent, timeout = 0, stdin = [] } = {}) {
     const ok = await pyReady();

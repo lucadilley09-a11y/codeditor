@@ -1066,6 +1066,10 @@
   setDevice('full');
   clearConsole();
   initResizers();
+  /* phone: tapping outside the sliding sidebar closes it */
+  const phone = matchMedia('(max-width: 680px)');
+  ['center', 'right'].forEach((id) => $('#' + id)?.addEventListener('pointerdown', () => { if (phone.matches && !settings.hideSidebar) exec('view.sidebar'); }));
+  if (phone.matches && !settings.hideSidebar) { settings.hideSidebar = true; app.classList.add('no-sidebar'); }
   initDrop();
   addEventListener('keydown', onKey, true);
   app.classList.remove('loading');

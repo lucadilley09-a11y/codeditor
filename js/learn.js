@@ -98,7 +98,6 @@
     toast(`+${n} XP${why ? ' · ' + why : ''}`, 'xp', 1800);
     const after = levelInfo().lvl;
     if (after >= 5) badge('level-5'); if (after >= 10) badge('level-10'); if (state.xp >= 1000) badge('xp-1000');
-    if (after > before) setTimeout(() => { Q.confetti(160); toast(`Level up! You’re now level ${after} — ${titleFor(after)} 🎉`, 'success', 4000); }, 500);
   }
   function badge(id) {
     if (state.badges[id]) return;
@@ -159,6 +158,7 @@
     start(course, lesson);
   }
   function start(course, lesson) {
+    if (course.run === 'py' && Q.runner.pyState !== 'ready' && Q.runner.pyState !== 'loading') Q.runner.pyReady().catch(() => {}); // warm Python up early
     if (lesson.regen) { lesson.steps = lesson.regen(Q.gen.freshSeed()); if (!lesson.hand) delete state.code[key(course.id, lesson.id)]; }
     state.langsOpened = [...new Set([...(state.langsOpened || []), course.lang])];
     if (state.langsOpened.length >= 3) badge('explorer');
@@ -334,20 +334,21 @@
     if (!S) return;
     const st = step(); if (!st || st.type !== 'code') return;
     const code = app.editor.get(tabId()) ?? '';
-    const btn = document.getElementById('lesson-check'); if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner" style="width:14px;height:14px"></div> Checking…'; }
+    const btn = document.getElementById('lesson-check'); if (btn) { btn.disabled = true; btn.innerHTML = `<div class="spinner" style="width:14px;height:14px"></div> ${S.course.run === 'py' && Q.runner.pyState !== 'ready' ? 'Loading Python…' : 'Checking…'}`; }
     const fb = document.getElementById('lesson-fb');
     const r = { code, logs: [], errors: [], out: '' };
     app.clearConsole();
+    const guard = (ms, pr) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), ms))]);
     try {
       const run = S.course.run;
       const onEvent = (d) => app.log(d.type === 'warn' ? 'warn' : d.type, d.text, { line: d.line, file: d.line ? tabId() : null, lang: S.course.lang });
       if (run === 'js' || run === 'ts') {
         let js = code;
-        if (run === 'ts') js = await app.editor.transpileTS(tabId());
-        Object.assign(r, await Q.runner.runJS(js, { onEvent, timeout: 4000 }));
+        if (run === 'ts') js = await guard(8000, app.editor.transpileTS(tabId()));
+        Object.assign(r, await guard(8000, Q.runner.runJS(js, { onEvent, timeout: 4000 })));
       } else if (run === 'py') {
         if (Q.runner.pyState !== 'ready') app.log('sys', 'Starting Python (first time takes a few seconds)…');
-        Object.assign(r, await Q.runner.runPython(code, { onEvent, timeout: 10000, stdin: st.stdin || [] }));
+        Object.assign(r, await guard(Q.runner.pyState === 'ready' ? 15000 : 75000, Q.runner.runPython(code, { onEvent, timeout: 10000, stdin: st.stdin || [] })));
         if (r.unavailable) throw new Error('offline');
       } else if (run === 'web') {
         const frame = document.getElementById('checkframe');
@@ -377,7 +378,11 @@
       }
     } catch (e) {
       fb.innerHTML = '';
-      fb.append(h('div', { class: 'feedback bad', html: `${icon('alert', 16)}<div>${e.message === 'offline' ? 'Python needs an internet connection the first time it loads. Connect and press Check again.' : 'Couldn’t run the check: ' + esc(e.message)}</div>` }));
+      if (e.message === 'slow') { Q.runner.stopJS(); Q.runner.stopPython(); }
+      const why = e.message === 'offline' ? 'Python couldn’t load — it downloads from the internet the first time (some school networks block it). Check your connection and press Check again.'
+        : e.message === 'slow' ? 'The check took too long, so it was stopped. Press Check again — if it keeps happening, look for an endless loop.'
+        : 'Couldn’t run the check: ' + esc(e.message);
+      fb.append(h('div', { class: 'feedback bad', html: `${icon('alert', 16)}<div>${why}</div>` }));
     } finally {
       const b = document.getElementById('lesson-check'); if (b) { b.disabled = false; b.innerHTML = `${icon('play', 12)} Check <kbd style="background:transparent;border-color:#fff6;color:#fff">Ctrl ⏎</kbd>`; }
     }
