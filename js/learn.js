@@ -275,6 +275,7 @@
   }
 
   function renderQuiz(st, body, foot) {
+    if (st.ctx) body.append(h('div', { class: 'qctx', text: st.ctx }));
     body.append(h('h4', { html: st.type === 'predict' ? (st.q || 'What will this print?') : st.q }));
     if (st.intro) body.append(richText(st.intro));
     if (st.code) body.append(h('pre', { text: st.code }));
@@ -351,7 +352,7 @@
 
   /* Arrange the lines: drag (or use the arrows) to put shuffled lines in order */
   function renderOrder(st, body, foot) {
-    body.append(h('div', { class: 'task', html: `<div class="lab">${icon('target', 13)} Your task</div>${st.task}` }));
+    body.append(h('div', { class: 'task', html: `<div class="lab">${icon('target', 13)} Your task${st.ctx ? `<span class="tctx">${esc(st.ctx)}</span>` : ''}</div>${st.task}` }));
     S.order = S.order && S.order.step === st ? S.order : { step: st, lines: st.lines.slice() };
     const list = h('div', { class: 'order-list' });
     const fb = h('div', { id: 'lesson-fb' });
@@ -388,7 +389,7 @@
 
   /* Click the buggy line */
   function renderSpot(st, body, foot) {
-    body.append(h('div', { class: 'task', html: `<div class="lab">${icon('target', 13)} Your task</div>${st.task}` }));
+    body.append(h('div', { class: 'task', html: `<div class="lab">${icon('target', 13)} Your task${st.ctx ? `<span class="tctx">${esc(st.ctx)}</span>` : ''}</div>${st.task}` }));
     const fb = h('div', { id: 'lesson-fb' }); const next = nextBtn();
     let view;
     const pickLine = (i) => {
@@ -408,6 +409,7 @@
   /* Type the output */
   const norm = (t) => String(t).replace(/\r/g, '').split('\n').map((l) => l.trim().replace(/\s+/g, ' ')).filter((l, i, a) => l || i < a.length - 1).join('\n').trim();
   function renderTypeout(st, body, foot) {
+    if (st.ctx) body.append(h('div', { class: 'qctx', text: st.ctx }));
     body.append(h('h4', { text: st.q }), h('pre', { text: st.code }));
     const multi = String(st.answer).includes('\n');
     const input = h(multi ? 'textarea' : 'input', { class: 'input typeout', rows: multi ? Math.min(8, String(st.answer).split('\n').length + 1) : null, spellcheck: 'false', autocomplete: 'off', placeholder: multi ? 'Type each printed line…' : 'Type the output…' });
@@ -426,7 +428,8 @@
 
   /* True or false */
   function renderTF(st, body, foot) {
-    body.append(h('h4', { text: st.q }), h('pre', { text: st.code }), h('p', { class: 'tf-claim', html: `This prints <code>${esc(st.claim)}</code>` }));
+    if (st.ctx) body.append(h('div', { class: 'qctx', text: st.ctx }));
+    body.append(h('h4', { text: st.q }), h('pre', { text: st.code }), h('p', { class: 'tf-claim', html: `${['This prints', 'The output is', 'The console shows', 'It prints'][(st.seed || 0) % 4]} <code>${esc(st.claim)}</code>` }));
     const fb = h('div', { id: 'lesson-fb' }); const next = nextBtn();
     const opts = h('div', { class: 'qopts tf' });
     [['True', true], ['False', false]].forEach(([label, val], j) => {
@@ -527,7 +530,7 @@
   function renderCode(st, body, foot) {
     if (st.html && !st.task) body.append(richText(st.html));
     else if (st.intro) body.append(richText(st.intro));
-    body.append(h('div', { class: 'task', html: `<div class="lab">${icon('target', 13)} Your task</div>${st.task}` }));
+    body.append(h('div', { class: 'task', html: `<div class="lab">${icon('target', 13)} Your task${st.ctx ? `<span class="tctx">${esc(st.ctx)}</span>` : ''}</div>${st.task}` }));
     const fb = h('div', { id: 'lesson-fb' });
     body.append(fb);
     if (S.solved[S.i]) fb.append(h('div', { class: 'feedback good', html: `${icon('check', 16)}<div><b>Solved!</b> ${st.success || ''}</div>` }));
@@ -574,10 +577,10 @@
   }, 250);
   function buildWeb(st, code) {
     const mode = st.mode || S.course.mode || 'html';
-    if (mode === 'html') return code;
+    if (mode === 'html') return Q.runner.guardHTML(code);
     if (mode === 'css') return (st.page || '<p>Hello</p>').replace('</head>', `<style>${code}</style></head>`).replace(/^(?![\s\S]*<\/head>)/, `<style>${code}</style>`);
     const trap = '<script>window.__quillErrs=[];addEventListener("error",function(e){__quillErrs.push({type:"error",text:(e.error&&e.error.name?e.error.name+": ":"")+e.message})});<\/script>';
-    return (st.page || '<body></body>').replace('<body>', '<body>' + trap).replace('</body>', `<script>${code.replace(/<\/script/gi, '<\\/script')}<\/script></body>`);
+    return (st.page || '<body></body>').replace('<body>', '<body>' + trap).replace('</body>', `<script>${Q.runner.guardJS(code).replace(/<\/script/gi, '<\\/script')}<\/script></body>`);
   }
 
   async function check() {
@@ -1033,7 +1036,7 @@
     open(c.id, l.id, { force: true }); return true;
   }
   /* practice built from your mistake heatmap: pick the language and mistake kinds you struggle with most */
-  const CAT_KINDS = { typo: ['fix', 'fill2', 'fill'], syntax: ['fix', 'spot', 'order'], types: ['fix', 'spot', 'typeout'], output: ['predict', 'typeout', 'tf'], offbyone: ['typeout', 'spot', 'tf'], reading: ['typeout', 'tf', 'order'], structure: ['write', 'fill2', 'order'], loops: ['fix', 'spot'] };
+  const CAT_KINDS = { typo: ['fix', 'fill2', 'fill', 'finish'], syntax: ['fix', 'spot', 'order'], types: ['fix', 'spot', 'typeout'], output: ['predict', 'typeout', 'tf'], offbyone: ['typeout', 'spot', 'tf'], reading: ['typeout', 'tf', 'order'], structure: ['write', 'fill2', 'order', 'finish'], loops: ['fix', 'spot'] };
   function practiceMistakes(lang) {
     const m = state.mistakes || {};
     const tot = {}; Object.values(m).forEach((r) => Object.entries(r).forEach(([l, v]) => (tot[l] = (tot[l] || 0) + v)));

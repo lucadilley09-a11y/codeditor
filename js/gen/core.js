@@ -55,6 +55,61 @@
 
   const noBlank = (r) => (/____/.test(r.code) ? 'Replace the <code>____</code> with real code.' : true);
 
+  /* ---------- wording variety: the same exercise, asked in different ways ---------- */
+  const PHRASE = [
+    [/^This should print /, ['This should print ', 'It’s supposed to print ', 'It’s meant to print ', 'It ought to print ']],
+    [/^This should /, ['This should ', 'This is meant to ', 'The code should ', 'It’s supposed to ']],
+    [/^This crashes/, ['This crashes', 'Running this crashes', 'This code crashes', 'Uh oh — this crashes']],
+    [/^This won’t /, ['This won’t ', 'This doesn’t ', 'Right now this won’t ']],
+    [/^This prints /, ['This prints ', 'Right now this prints ', 'At the moment it prints ']],
+    [/^Make it print /, ['Make it print ', 'Get it to print ', 'Have it print ', 'Change it so it prints ']],
+    [/^Print the /, ['Print the ', 'Show the ', 'Output the ', 'Display the ', 'Print out the ']],
+    [/^Print each /, ['Print each ', 'Show each ', 'Print every ', 'Output each ']],
+    [/^Print whether /, ['Print whether ', 'Show whether ', 'Print True/False for whether ']],
+    [/^Print /, ['Print ', 'Show ', 'Output ', 'Display ', 'Print out ']],
+    [/^Make a /, ['Make a ', 'Create a ', 'Build a ', 'Set up a ']],
+    [/^Make an /, ['Make an ', 'Create an ', 'Build an ', 'Set up an ']],
+    [/^Make the /, ['Make the ', 'Get the ', 'Change the code so the ']],
+    [/^Write a /, ['Write a ', 'Create a ', 'Code a ', 'Make a ']],
+    [/^Write (?=\w)/, ['Write ', 'Create ', 'Code ', 'Build ']],
+    [/^Loop over /, ['Loop over ', 'Loop through ', 'Go through ', 'Walk through ']],
+    [/^Count how many/, ['Count how many', 'Work out how many', 'Find out how many', 'Figure out how many']],
+    [/^Add up /, ['Add up ', 'Total up ', 'Sum up ']],
+    [/^Change the /, ['Change the ', 'Update the ', 'Edit the ']],
+    [/^Use a /, ['Use a ', 'Using a ']],
+    [/^Give the /, ['Give the ', 'Set the ']],
+    [/^Ask for /, ['Ask for ', 'Ask the player for ', 'Ask the user for ']],
+    [/^Create /, ['Create ', 'Make ', 'Set up ']],
+    [/^Set /, ['Set ', 'Start with ', 'Make ', 'Begin with ']],
+    [/^If /, ['If ', 'When ']],
+    [/^Using /, ['Using ', 'With ']],
+    [/^Given /, ['Given ', 'You have ', 'Starting from ']],
+  ];
+  // common phrases in the middle/end of a task
+  const PHRASE_MID = [
+    [/, and print it\./, [', and print it.', ', then print it.', ', then print the result.', ' — then print it.']],
+    [/ on two lines\./, [' on two lines.', ' on separate lines.', ', each on its own line.']],
+    [/, one per line\./, [', one per line.', ', each on its own line.', ' (one line each).']],
+    [/ and print the count\./, [' and print the count.', ', then print how many.', ' and print that number.']],
+    [/ and print the total\./, [' and print the total.', ', then print the total.', ' and show the total.']],
+    [/, but stops one short\./, [', but stops one short.', ', but it misses the last one.', ', but it’s one short.']],
+    [/ \(The checker types /, [' (The checker types ', ' (The test types ', ' (When checked, the input is ']],
+  ];
+  const CTX = ['🏆 Score screen', '🛒 Shop menu', '🐉 Boss fight', '🗺️ Level select', '🎒 Inventory', '💾 Save system', '🏎️ Racing game', '🚀 Space shooter', '🌾 Farm game', '🗝️ Dungeon crawler', '🧩 Puzzle game', '🍄 Platformer', '🏰 Tower defense', '🐾 Pet sim', '📜 Quest log', '📊 Leaderboard', '🧙 Character creator', '⚒️ Crafting menu', '🎣 Fishing minigame', '⛅ Weather system', '🎵 Rhythm game', '🧟 Zombie survival', '⚽ Sports game', '🃏 Card game'];
+  const HEAD = {
+    fix: ['<b>Fix the bug.</b>', '<b>Something’s broken.</b>', '<b>Bug hunt!</b>', '<b>Debug this.</b>', '<b>Find and fix the mistake.</b>', '<b>Spot it, fix it.</b>'],
+    fill: ['<b>Fill in the box.</b>', '<b>Fill the gap.</b>', '<b>One piece is missing.</b>', '<b>Complete the line.</b>', '<b>What goes in the box?</b>'],
+  };
+  const PREDICT_Q = ['What will this print?', 'What’s the output?', 'What shows up in the console?', 'Run it in your head — what does it print?', 'What gets printed?', 'Predict the output.', 'What will you see when this runs?'];
+  // swap the opening words of the first sentence (only plain text, never inside tags)
+  function rephrase(task, g) {
+    let t = String(task);
+    for (const [re, alts] of PHRASE) { if (re.test(t)) { t = t.replace(re, g.pick(alts)); break; } }
+    for (const [re, alts] of PHRASE_MID) if (re.test(t)) t = t.replace(re, g.pick(alts));
+    return t;
+  }
+  const vary = { rephrase, CTX, HEAD, PREDICT_Q };
+
   /* turn a template into a lesson step */
   function make(courseId, tpl, seed, hard) {
     const p = packs[courseId];
@@ -62,10 +117,13 @@
     let o;
     try { o = tpl.make(g); } catch (err) { console.warn('generator failed', courseId, tpl.id, err); return null; }
     const tag = `${tpl.skill} · ${KIND[tpl.kind]}`;
-    const base = { tpl: tpl.id, gkind: tpl.kind, tag, generated: true, seed };
-    if (tpl.kind === 'predict') return { type: 'predict', code: o.code, q: o.q, explain: o.explain, ...options(g, o.answer, o.wrong), ...base };
+    const base = { tpl: tpl.id, course: courseId, gkind: tpl.kind, tag, generated: true, seed };
+    // wording variety uses its own random stream, so it never changes the numbers in the level
+    const w = G((seed ^ 0x9e3779b9) >>> 0);
+    if (w.chance(0.45)) base.ctx = w.pick(CTX);
+    if (tpl.kind === 'predict') return { type: 'predict', code: o.code, q: o.q || w.pick(PREDICT_Q), explain: o.explain, ...options(g, o.answer, o.wrong), ...base };
     if (tpl.kind === 'quiz') return { type: 'quiz', q: o.q, explain: o.explain, mono: !!o.mono, ...options(g, o.answer, o.wrong), ...base };
-    const task = (tpl.kind === 'fix' ? '<b>Fix the bug.</b> ' : tpl.kind === 'fill' ? '<b>Fill in the blank</b> — replace <code>____</code>. ' : '') + o.task;
+    const task = (HEAD[tpl.kind] ? w.pick(HEAD[tpl.kind]) + ' ' : '') + rephrase(o.task, w);
     const starter = tpl.kind === 'fix' ? o.bug : tpl.kind === 'fill' ? o.blank : (o.starter ?? '');
     let check;
     if (p.run === 'review') {
@@ -118,19 +176,22 @@
   /* pick n levels from a template pool, keeping kinds varied and avoiding repeats where possible */
   /* ---------- new level types, made from existing templates (so every language gets them) ---------- */
   // write → order (arrange lines) / fill2 (several blanks); fix → spot (click the buggy line); predict → typeout / tf
-  const DERIVE = { write: ['write', 'write', 'order', 'fill2'], fix: ['fix', 'fix', 'spot'], predict: ['predict', 'typeout', 'tf'], fill: ['fill'], quiz: ['quiz'] };
-  const BASE = { order: 'write', fill2: 'write', spot: 'fix', typeout: 'predict', tf: 'predict', output: 'predict' };
+  const DERIVE = { write: ['write', 'write', 'order', 'fill2', 'finish'], fix: ['fix', 'fix', 'spot'], predict: ['predict', 'typeout', 'tf'], fill: ['fill'], quiz: ['quiz'] };
+  const BASE = { order: 'write', fill2: 'write', finish: 'write', spot: 'fix', typeout: 'predict', tf: 'predict', output: 'predict' };
   const KW = new Set('if else elif for while do return function def let const var local end then in of and or not new class public private static void int float double bool string true false True False None null nil self this print echo import from using include std cout endl auto break continue switch case default try catch except'.split(' '));
+  const VERB = /^(Print|Show|Output|Display|Make|Create|Build|Set|Write|Code|Loop|Go|Walk|Count|Work|Find|Figure|Add|Total|Sum|Change|Update|Edit|Use|Using|Give|Ask|Store|Sort|Fill|Draw|Move|Return|Call|Get|Have|Put|Keep|Turn|Check|Start|Read|Save|Split|Join|Swap|Spawn|Pick|Clamp|Round)\b/;
+  // "…so the code will <task>" when the task starts with a verb, otherwise "…does this: <Task>"
+  const joinTask = (g, colon, will, t) => (VERB.test(t) ? `${g.pick(will)} ${t.replace(/^\w/, (c) => c.toLowerCase())}` : `${g.pick(colon)} ${t}`);
   const plainTask = (t) => String(t || '').replace(/^<b>[^<]*<\/b>\s*(—\s*replace <code>____<\/code>\.\s*)?/, '');
   function derive(step, vk, g) {
     if (!step || vk === step.type || vk === step.gkind) return step;
-    const keep = { tag: step.tag.replace(/ · [^·]+$/, '') + ' · ' + ({ order: 'Arrange', fill2: 'Fill the boxes', spot: 'Spot the bug', typeout: 'Type the output', tf: 'True or false' }[vk]), tpl: step.tpl, generated: true, seed: step.seed, gkind: vk, vkind: vk };
+    const keep = { tag: step.tag.replace(/ · [^·]+$/, '') + ' · ' + ({ order: 'Arrange', fill2: 'Fill the boxes', spot: 'Spot the bug', typeout: 'Type the output', tf: 'True or false', finish: 'Finish it' }[vk]), tpl: step.tpl, generated: true, seed: step.seed, gkind: vk, vkind: vk, ctx: step.ctx };
     if (vk === 'order' && step.type === 'code' && step.solution) {
       const lines = step.solution.replace(/\s+$/, '').split('\n').filter((l) => l.trim());
       if (lines.length < 3 || lines.length > 10 || new Set(lines.map((l) => l.trim())).size < 3) return null;
       let sh = lines; for (let k = 0; k < 8 && sh.join('\n') === lines.join('\n'); k++) sh = g.shuffle(lines);
       if (sh.join('\n') === lines.join('\n')) return null;
-      return { type: 'order', task: `<b>Put the lines in order</b> so the code does this: ${plainTask(step.task)}`, lines: sh, solution: lines.join('\n') + '\n', check: step.check, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
+      return { type: 'order', task: joinTask(g, ['<b>Put the lines in order</b> so the code does this:', '<b>Unscramble the code.</b> The goal:', '<b>The lines got mixed up!</b> Sort them. The program should do this:'], ['<b>Unscramble the code.</b> When it’s in order, it should', '<b>The lines got mixed up!</b> Sort them so the code will', '<b>Arrange the lines</b> so that the program will', '<b>Put the lines in order</b> to'], plainTask(step.task)), lines: sh, solution: lines.join('\n') + '\n', check: step.check, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
     }
     if (vk === 'fill2' && step.type === 'code' && step.solution) {
       const lines = step.solution.split('\n');
@@ -141,21 +202,33 @@
       const out = lines.slice(); const answers = [];
       pick.forEach((c) => { out[c.i] = out[c.i].slice(0, c.at) + '____' + out[c.i].slice(c.at + c.t.length); answers.push(c.t); });
       const base = step.check;
-      return { type: 'code', task: `<b>Fill in the ${pick.length} boxes</b> so the code does this: ${plainTask(step.task)}`, starter: out.join('\n'), solution: step.solution, blanks: answers, hints: [`There are ${pick.length} boxes. Read the task, then work out what each box needs. Press <b>Tab</b> to jump to the next box.`, `The boxes are: ${answers.map((a) => `<code>${esc(a)}</code>`).join(', ')}`], check: base, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
+      return { type: 'code', task: joinTask(g, [`<b>Fill in the ${pick.length} boxes</b> so the code does this:`, `<b>${pick.length} pieces are missing.</b> The goal:`], [`<b>${pick.length} pieces are missing.</b> Fill them in so the code will`, `<b>Complete the code</b> (${pick.length} boxes) so that it will`, `<b>Fill in the ${pick.length} boxes</b> to`], plainTask(step.task)), starter: out.join('\n'), solution: step.solution, blanks: answers, hints: [`There are ${pick.length} boxes. Read the task, then work out what each box needs. Press <b>Tab</b> to jump to the next box.`, `The boxes are: ${answers.map((a) => `<code>${esc(a)}</code>`).join(', ')}`], check: base, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
+    }
+    if (vk === 'finish' && step.type === 'code' && step.solution) {
+      const lines = step.solution.replace(/\s+$/, '').split('\n');
+      const real = lines.filter((l) => l.trim()).length;
+      const given = (step.starter || '').replace(/\s+$/, '').split('\n').filter((l) => l.trim()).length;
+      if (real < 3 || given >= real - 1) return null;
+      let k = Math.max(given + 1, g.int(Math.ceil(lines.length / 3), lines.length - 1));
+      while (k < lines.length && !lines[k - 1].trim()) k++;
+      if (k >= lines.length) return null;
+      const starter = lines.slice(0, k).join('\n') + '\n';
+      if (Q.gen.packs[step.course]?.run === 'review') { try { if (step.check({ code: starter, logs: [], errors: [], out: '' }) === true) return null; } catch {} }
+      return { type: 'code', task: joinTask(g, ['<b>Finish the code.</b> The first lines are done. The goal:', '<b>Half done!</b> The goal:'], ['<b>Finish the code.</b> The first lines are written — add the rest to', '<b>Half done!</b> Add the missing lines to', '<b>Pick up where it stops</b> and', '<b>Finish the job:</b>'], plainTask(step.task)), starter, solution: step.solution, hints: step.hints, check: step.check, page: step.page, mode: step.mode, stdin: step.stdin, ...keep };
     }
     if (vk === 'spot' && step.type === 'code' && step.starter != null && step.solution) {
       const A = step.starter.replace(/\s+$/, '').split('\n'), B = step.solution.replace(/\s+$/, '').split('\n');
       if (A.length !== B.length || A.length < 2) return null;
       const diff = A.map((l, i) => (l.trim() !== (B[i] || '').trim() ? i : -1)).filter((i) => i >= 0);
       if (diff.length !== 1) return null;
-      return { type: 'spot', task: `<b>Click the line with the bug.</b> ${plainTask(step.task)}`, code: A.join('\n'), bad: diff[0], fixed: B[diff[0]], solution: step.solution, ...keep };
+      return { type: 'spot', task: `${g.pick(['<b>Click the line with the bug.</b>', '<b>Which line is wrong?</b> Click it.', '<b>Find the broken line</b> and click it.', '<b>One line has a bug.</b> Click it.'])} ${plainTask(step.task)}`, code: A.join('\n'), bad: diff[0], fixed: B[diff[0]], solution: step.solution, ...keep };
     }
     if ((vk === 'typeout' || vk === 'tf') && step.type === 'predict' && step.code) {
       const ans = String(step.options[step.answer]);
-      if (vk === 'typeout') return { type: 'typeout', q: 'Type exactly what this prints:', code: step.code, answer: ans, explain: step.explain, ...keep };
+      if (vk === 'typeout') return { type: 'typeout', q: g.pick(['Type exactly what this prints:', 'Type the output:', 'What appears in the console? Type it:', 'Write down exactly what you’d see:']), code: step.code, answer: ans, explain: step.explain, ...keep };
       const truth = g.chance(0.5); const wrongs = step.options.filter((_, i) => i !== step.answer);
       const shown = truth || !wrongs.length ? ans : String(g.pick(wrongs));
-      return { type: 'tf', q: 'True or false?', code: step.code, claim: shown, truth: shown === ans, actual: ans, explain: step.explain, ...keep };
+      return { type: 'tf', q: g.pick(['True or false?', 'Is this right?', 'Agree or disagree?', 'Check this claim:']), code: step.code, claim: shown, truth: shown === ans, actual: ans, explain: step.explain, ...keep };
     }
     return null;
   }
@@ -228,5 +301,5 @@
     return s;
   }
 
-  Q.gen = { derive, sig, sigHash, DERIVE, BASE, G, hash, freshSeed, options, near, pack, packs, make, levels, again, record, skill, isHard, esc, POOL };
+  Q.gen = { vary, derive, sig, sigHash, DERIVE, BASE, G, hash, freshSeed, options, near, pack, packs, make, levels, again, record, skill, isHard, esc, POOL };
 })();

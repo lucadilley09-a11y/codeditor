@@ -2,6 +2,9 @@
 (() => {
   // Python ships with the app (py/ folder): the hosted page may not download data files from other sites
   const PYODIDE = new URL('py/', location.href).href;
+  const PY_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+  // a page opened straight from a file can't load the bundled copy into a worker, so go to the CDN first there
+  const PY_BASES = location.protocol === 'file:' ? [PY_CDN, PYODIDE] : [PYODIDE, PY_CDN];
 
   // Shared value formatter (stringified into iframes/workers too)
   const FMT = `function __fmt(v, d) {
@@ -36,6 +39,23 @@
   })();<\/script>`;
 
   /* ---------- Web preview page builder ---------- */
+  /* ---------- loop guard: a loop that never ends would freeze the whole app (the page shares our thread).
+     Every loop checks the clock now and then; if one task runs for 3 s without a break, it throws. ---------- */
+  const LG_HEAD = 'var __lgT=Date.now(),__lgN=0;setInterval(function(){__lgT=Date.now()},100);function __lg(){if((++__lgN&2047)===0&&Date.now()-__lgT>3000){__lgT=Date.now();throw new Error("Infinite loop? A loop ran for over 3 seconds, so it was stopped.")}return false}\n';
+  function guardJS(code) {
+    if (!/\b(for|while|do)\b/.test(code)) return code;
+    const g = code.replace(/\b(for|while)(\s*)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)(\s*)\{/g, (m, k, a, c, b) => `${k}${a}(${c})${b}{ if (__lg()) break;`)
+      .replace(/\bdo(\s*)\{/g, (m, a) => `do${a}{ if (__lg()) break;`);
+    return LG_HEAD + g;
+  }
+  function guardHTML(html) {
+    return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (m, attrs, body) => {
+      if (/\bsrc\s*=/i.test(attrs)) return m;
+      const t = (attrs.match(/\btype\s*=\s*["']?([^"'\s>]+)/i) || [])[1];
+      if (t && !/javascript|module|babel/i.test(t)) return m;
+      return `<script${attrs}>${guardJS(body)}</script>`;
+    });
+  }
   function buildPage(entry, readFile, { hook = true } = {}) {
     let html = readFile(entry);
     if (html == null) return '<p>Missing ' + entry + '</p>';
@@ -54,6 +74,7 @@
       js = js.replace(/<\/script/gi, '<\\/script');
       return `<script${a}${b} data-file="${p}">\n${js}\n<\/script>`;
     });
+    if (hook) html = guardHTML(html);
     const A = Q.assets ? Q.assets.previewScript(entry, readFile) : { map: {}, script: '' };
     if (A.script) html = Q.assets.rewriteHTML(html, entry, A.map);
     const head = (hook ? HOOK + (Q.ext && Q.ext.previewHead ? Q.ext.previewHead() : '') : '') + A.script;
@@ -68,7 +89,13 @@
   const JS_WORKER = `
     ${FMT}
     var __stdin = [];
-    var __send = function (type, args) { postMessage({ type: type, text: Array.prototype.map.call(args, function (a) { return __fmt(a); }).join(' ') }); };
+    var __n = 0, __LIMIT = 3000;
+    var __send = function (type, args) {
+      if (++__n > __LIMIT) { if (__n === __LIMIT + 1) postMessage({ type: 'flood' }); throw new Error('__quill_flood'); }
+      var t = Array.prototype.map.call(args, function (a) { return __fmt(a); }).join(' ');
+      if (t.length > 20000) t = t.slice(0, 20000) + '… (cut)';
+      postMessage({ type: type, text: t });
+    };
     ['log','info','warn','error','debug'].forEach(function (k) { console[k] = function () { __send(k === 'debug' ? 'log' : k, arguments); }; });
     console.table = function (t) { __send('log', [t]); };
     console.clear = function () { postMessage({ type: 'clear' }); };
@@ -76,7 +103,7 @@
     self.prompt = function (m) { var v = __stdin.length ? __stdin.shift() : null; __send('info', ['[prompt] ' + (m || '') + ' → ' + (v === null ? 'null (type input lines in the console Input box)' : v)]); return v; };
     self.addEventListener('unhandledrejection', function (e) { __send('error', ['Uncaught (in promise)', e.reason]); });
     onmessage = function (e) {
-      __stdin = e.data.stdin || [];
+      __stdin = e.data.stdin || []; __n = 0;
       try {
         (0, eval)(e.data.code + '\\n//# sourceURL=quill-user.js');
         postMessage({ type: 'sync-done' });
@@ -108,6 +135,7 @@
       };
       w.onmessage = (e) => {
         const d = e.data;
+        if (d.type === 'flood') { const x = { type: 'error', text: 'TooMuchOutput: Your code printed more than 3000 lines, so it was stopped. Is there a loop that never ends?', last: 'TooMuchOutput' }; errors.push(x); onEvent && onEvent(x); w.terminate(); if (jsWorker === w) jsWorker = null; done = true; clearTimeout(settleTimer); clearTimeout(hardTimer); resolve({ logs, errors, timedOut: true }); return; }
         if (d.type === 'sync-done') { if (timeout) settleTimer = setTimeout(() => finish(false), settle); else finish(false); return; }
         if (d.type === 'error') errors.push(d); else if (d.type !== 'clear') logs.push(d.text);
         onEvent && onEvent(d);
@@ -121,25 +149,42 @@
 
   /* ---------- Python via Pyodide in a Web Worker ---------- */
   const PY_WORKER = `
-    importScripts('${PYODIDE}pyodide.js');
-    let py = null, stdin = [];
-    const ready = loadPyodide({ indexURL: '${PYODIDE}', stdLibURL: '${PYODIDE}python_stdlib.wasm' }).then((p) => {
+    // try the bundled copy first; if it can't load (opened from a downloaded file, files missing), use the CDN
+    const BASES = ${JSON.stringify(PY_BASES)};
+    let base = null;
+    for (const u of BASES) { try { importScripts(u + 'pyodide.js'); base = u; break; } catch (_) {} }
+    const load = async () => {
+      let lastErr;
+      for (const u of BASES.slice(BASES.indexOf(base))) {
+        try { const p = await loadPyodide({ indexURL: u, stdLibURL: u + (u.includes('cdn.jsdelivr') ? 'python_stdlib.zip' : 'python_stdlib.wasm') }); return p; } catch (e) { lastErr = e; }
+      }
+      throw lastErr || new Error('Python could not be loaded');
+    };
+    let py = null, stdin = [], outN = 0, outB = 0, pend = '', flooded = false; const dec = new TextDecoder();
+    const flood = () => { if (!flooded) { flooded = true; postMessage({ type: 'flood' }); } };
+    const emit = (t) => { if (++outN > 3000) { flood(); throw new Error('too much output'); } postMessage({ type: 'log', text: t }); };
+    const ready = (base ? load() : Promise.reject(new Error('Python could not be downloaded — check your internet connection.'))).then((p) => {
       py = p;
-      py.setStdout({ batched: (s) => postMessage({ type: 'log', text: s }) });
-      py.setStderr({ batched: (s) => postMessage({ type: 'warn', text: s }) });
+      py.setStdout({ write: (buf) => { outB += buf.length; if (outB > 3000000) { flood(); throw new Error('too much output'); } pend += dec.decode(buf, { stream: true }); let i; while ((i = pend.indexOf('\\n')) >= 0) { emit(pend.slice(0, i)); pend = pend.slice(i + 1); } if (pend.length > 20000) { emit(pend.slice(0, 20000) + '… (cut)'); pend = ''; } return buf.length; } });
+      py.setStderr({ batched: (s) => { if (++outN > 3000) { flood(); throw new Error('too much output'); } postMessage({ type: 'warn', text: s }); } });
       py.setStdin({ stdin: () => { if (stdin.length) { const v = stdin.shift(); postMessage({ type: 'info', text: '› ' + v }); return v; } postMessage({ type: 'warn', text: 'input() needs a value — type lines in the console Input box before running.' }); return ''; } });
       postMessage({ type: 'ready' });
     }).catch((e) => postMessage({ type: 'fatal', text: String(e) }));
     onmessage = async (e) => {
       await ready;
       if (!py) return postMessage({ type: 'done', failed: true });
-      stdin = e.data.stdin || [];
+      stdin = e.data.stdin || []; outN = 0; outB = 0; pend = ''; flooded = false;
       const ns = py.globals.get('dict')();
       try {
         try { await py.loadPackagesFromImports(e.data.code, { messageCallback: (m) => postMessage({ type: 'info', text: m }) }); } catch (_) {}
         await py.runPythonAsync(e.data.code, { globals: ns, filename: '<exec>' });
+        try { py.runPython('import sys\\nsys.stdout.flush()\\nsys.stderr.flush()'); } catch (_) {}
+        if (pend) { postMessage({ type: 'log', text: pend }); pend = ''; }
         postMessage({ type: 'done' });
       } catch (err) {
+        if (flooded) return;
+        try { py.runPython('import sys\\nsys.stdout.flush()\\nsys.stderr.flush()'); } catch (_) {}
+        if (pend) { postMessage({ type: 'log', text: pend }); pend = ''; }
         const msg = String(err.message || err);
         const lines = [...msg.matchAll(/File "<exec>", line (\\d+)/g)];
         const tb = msg.split('\\n').filter((l) => l.trim());
@@ -211,6 +256,7 @@
       const logs = [], errors = []; let timer;
       const out = []; // stdout may arrive chunked by line
       pyListener = (d) => {
+        if (d.type === 'flood') { clearTimeout(timer); pyListener = null; if (pyWorker) { pyWorker.terminate(); pyWorker = null; pyState = 'idle'; Q.bus.emit('py:status', 'stopped'); } const x = { type: 'error', text: 'TooMuchOutput: Your code printed more than 3000 lines, so it was stopped. Is there a loop that never ends?', last: 'TooMuchOutput' }; errors.push(x); onEvent && onEvent(x); resolve({ logs: out, errors, timedOut: true }); return; }
         if (d.type === 'done') { clearTimeout(timer); pyListener = null; resolve({ logs: out.join('\n').split('\n').filter((l, i, a) => !(i === a.length - 1 && l === '')), errors }); return; }
         if (d.type === 'error') errors.push(d); else if (d.type === 'log') out.push(d.text);
         if (d.type !== 'error' || true) logs.push(d.text);
@@ -226,7 +272,7 @@
   }
 
   Q.runner = {
-    buildPage, runJS, stopJS, runPython, stopPython, pyReady, pyDiag,
+    buildPage, guardJS, guardHTML, runJS, stopJS, runPython, stopPython, pyReady, pyDiag,
     get pyState() { return pyState; },
     stop() { return stopJS() | stopPython(); },
   };

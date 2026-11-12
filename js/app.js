@@ -520,7 +520,8 @@
     if (line && file) row.append(h('span', { class: 'ln', text: `${file.split('/').pop()}:${line}`, onclick: () => (isVirtual(file) ? activate(file) : openFile(file)) || setTimeout(() => editor.reveal(line), 40) }));
     if (type === 'error') row.append(h('button', { class: 'explain', html: `${icon('bulb', 12)}Explain`, onclick: () => { Q.tutor.explainError(text, lang || langOfId(editor.activeId), { line, file }); showRight('tutor'); } }));
     c.append(row); lastLine = row;
-    c.parentElement.scrollTop = c.parentElement.scrollHeight;
+    if (c.childElementCount > 1500) for (let k = c.childElementCount - 1200; k > 0; k--) c.firstElementChild.remove(); // keep the console light
+    if (!log.sq) { log.sq = true; requestAnimationFrame(() => { log.sq = false; c.parentElement.scrollTop = c.parentElement.scrollHeight; }); }
     ccount++; setCount($('#ccount'), ccount, type === 'error' || $('#ccount').classList.contains('bad'));
     if (type !== 'sys' || !lastSummaryReal) { summary((type === 'error' ? '✕ ' : type === 'sys' ? '' : '› ') + text.split('\n')[0].slice(0, 160), type === 'error' ? 'error' : ''); lastSummaryReal = type !== 'sys'; }
     if (type === 'error' && settings.hidePanel) exec('view.panel');
@@ -678,7 +679,7 @@
     L.append(h('button', { class: 'sbi', id: 'sb-problems', title: 'Problems', onclick: () => showPanel('problems') }));
     L.append(h('button', { class: 'sbi', id: 'sb-py', title: 'Python runtime (click for a check-up)', html: '<i class="pydot"></i>Python', onclick: () => { showPanel('console'); Q.runner.pyDiag((t) => log('sys', t)); } }));
     L.append(h('span', { class: 'sbi', id: 'sb-engine', title: '' }));
-    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 13', style: { opacity: '.55' } }));
+    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 14', style: { opacity: '.55' } }));
     R.append(h('div', { id: 'sb-ext', style: { display: 'flex', height: '100%' } }));
     R.append(h('button', { class: 'sbi', id: 'sb-pos', title: 'Go to line (Ctrl+G)', onclick: () => exec('edit.gotoLine') }));
     R.append(h('button', { class: 'sbi', id: 'sb-tab', title: 'Indentation', onclick: () => exec('settings.tabSize') }));

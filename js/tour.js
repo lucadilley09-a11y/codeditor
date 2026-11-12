@@ -62,14 +62,13 @@
 /* ---------- "What's new" after an update + weekly backup reminder ---------- */
 (() => {
   const { h, store, icon } = Q;
-  const BUILD = '13';
+  const BUILD = '14';
   const NEW = [
-    ['4 new level types', 'Arrange the lines, Click the buggy line, Type the output, and True or false.'],
-    ['No more repeats', 'Levels never repeat inside a lesson, the same type never comes twice in a row, and levels you saw recently are skipped.'],
-    ['Fill-in boxes', 'No more ____ — blanks are highlighted boxes. You start typing in the first one, and Tab jumps to the next.'],
-    ['Themed practice', 'New practice lessons: Arrange it, Spot the bug, Output check and Fill the boxes.'],
-    ['Practise your mistakes', 'Stats → “Practise my mistakes” builds levels for the mistakes you make most.'],
-    ['Combos', 'Get levels right first try in a row for bonus XP — and a new badge at ×8.'],
+    ['No more white screen', 'Code that prints forever (or loops forever) is now stopped safely instead of crashing the page.'],
+    ['Python in downloaded copies', 'If the bundled Python can’t load, it now downloads Python automatically instead.'],
+    ['Fresh wording', 'Every level is asked in different ways, with little game settings like 🐉 Boss fight or 🛒 Shop menu.'],
+    ['More exercises', 'New exercise types for every skill in JavaScript, Python, C#, Lua and C++.'],
+    ['Finish the code', 'A new level type: the first lines are written, you finish the rest.'],
   ];
   function card(cls, title, body, actions) {
     document.querySelector('.notice.' + cls)?.remove();
