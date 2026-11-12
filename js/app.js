@@ -22,7 +22,17 @@
     try { await saver.save({ filename: name, data: blob }); toast(`Saved ${esc(name)}`, 'success', 2000); }
     catch (err) { if (err?.code === 'declined') return; if (err?.code === 'rate_limited') return toast('A save is already waiting for you to confirm.', 'info', 2500); toast('Downloads aren’t available here — use copy/paste instead.', 'warn', 3000); exportDialog(); }
   }
+  async function saveBackupFile() {
+    const name = `codeditor-backup-${new Date().toLocaleDateString('en-CA')}.json`;
+    const blob = new Blob([fs.exportAll()], { type: 'application/json' });
+    if (!EMBED) return download(name, blob);
+    if (!saver) return exportDialog('all');
+    try { await saver.save({ filename: name, data: blob }); toast(`Saved ${esc(name)} — restore it with File → Restore from backup file`, 'success', 3500); }
+    catch (err) { if (err?.code === 'declined') return; toast('Downloads aren’t available here — copy the text instead.', 'warn', 3000); }
+  }
   const saveSettings = () => store.set('settings', settings);
+  // keep the theme in step with other open copies
+  store.watch?.('settings', (o) => { if (o.theme && o.theme !== settings.theme) { settings.theme = o.theme; const t = Q.themes.get(o.theme); Q.themes.applyCss(t); editor?.setTheme?.(o.theme); } });
   const editorOpts = () => ({ ...settings, ...Q.ext.editorFlags() });
 
   const FONTS = ['JetBrains Mono', 'Fira Code', 'IBM Plex Mono', 'Source Code Pro'];
@@ -37,6 +47,8 @@
   app.classList.toggle('no-panel', settings.hidePanel);
 
   /* ===================== Commands ===================== */
+  // Monaco cancels its own pending work when a file closes; that isn't an error
+  addEventListener('unhandledrejection', (e) => { const r = e.reason; if (r && (r.name === 'Canceled' || r.message === 'Canceled')) e.preventDefault(); });
   const commands = new Map();
   const cmd = (id, label, cat, run, key) => commands.set(id, { id, label, cat, run, key });
   const exec = (id, ...a) => { const c = commands.get(id); if (c) return c.run(...a); console.warn('no command', id); };
@@ -150,7 +162,7 @@
     focusLearn(v === 'lesson' && Q.learn?.active);
     syncLayoutBtns();
     $$('.rview').forEach((t) => t.classList.toggle('on', t.dataset.rview === v));
-    if (v === 'preview') refreshPreview(true);
+    if (v === 'preview') { delete previewFrame()?.dataset.paused; refreshPreview(true); } else pausePreview();
     if (v === 'tutor') Q.tutor.refresh();
   }
 
@@ -167,7 +179,7 @@
   /* ===================== Menus ===================== */
   function buildMenus() {
     const menus = {
-      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'project.zip', 'project.export', 'project.importText', '-', 'project.backup', 'project.restore'],
+      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'project.zip', 'project.export', 'project.importText', '-', 'project.backup', 'project.backupFile', 'project.restore', 'project.restoreFile', 'learn.restoreProgress'],
       Edit: ['edit.undo', 'edit.redo', '-', 'edit.find', 'edit.replace', 'search.all', '-', 'edit.comment', 'edit.duplicate', 'edit.format', 'edit.gotoLine'],
       View: ['palette', 'quickOpen', '-', 'view.sidebar', 'view.panel', 'view.right', 'view.zen', '-', 'theme.pick', 'zoom.in', 'zoom.out', 'zoom.reset'],
       Run: ['run.run', 'run.stop', 'preview.refresh', ...(EMBED ? [] : ['preview.newTab']), '-', 'console.clear'],
@@ -532,7 +544,7 @@
       h('div', { class: 'urlbox' }, h('span', { html: icon('lock', 12) }), sel),
       h('button', { class: 'icon-btn sm', id: 'dev-btn', title: 'Device size', html: icon('split', 14), onclick: (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu(r.left - 120, r.bottom + 4, [
         ['full', 'Fill panel'], ['phone', 'Phone · 375×667'], ['tablet', 'Tablet · 768×1024'], ['laptop', 'Laptop · 1280×800']].map(([k, l]) => ({ label: (previewDevice === k ? '✓ ' : '   ') + l, action: () => setDevice(k) }))); } }),
-      EMBED ? null : h('button', { class: 'icon-btn sm', title: 'Open in new browser tab', html: icon('external', 14), onclick: () => exec('preview.newTab') }));
+      ...(EMBED ? [] : [h('button', { class: 'icon-btn sm', title: 'Open in new browser tab', html: icon('external', 14), onclick: () => exec('preview.newTab') })]));
   }
   function setDevice(k) {
     previewDevice = k;
@@ -579,6 +591,10 @@
     sel.innerHTML = hf.length ? hf.map((f) => `<option ${f === entry ? 'selected' : ''}>${esc(f)}</option>`).join('') : '<option>(no html file)</option>';
   }
   const livePreview = debounce(() => refreshPreview(), 350);
+  /* save battery: stop the running preview while nobody can see it, restart it when they can */
+  function pausePreview() { const f = previewFrame(); if (f && f.srcdoc) { f.srcdoc = ''; f.dataset.paused = '1'; } }
+  function resumePreview() { const f = previewFrame(); if (f?.dataset.paused && settings.rview === 'preview' && !settings.hideRight && !document.hidden) { delete f.dataset.paused; refreshPreview(true); } }
+  document.addEventListener('visibilitychange', () => (document.hidden ? pausePreview() : resumePreview()));
   addEventListener('message', (e) => {
     const d = e.data; if (!d || !d.__quill) return;
     if (e.source !== previewFrame().contentWindow) return;
@@ -650,7 +666,7 @@
     L.append(h('button', { class: 'sbi', id: 'sb-problems', title: 'Problems', onclick: () => showPanel('problems') }));
     L.append(h('button', { class: 'sbi', id: 'sb-py', title: 'Python runtime (click for a check-up)', html: '<i class="pydot"></i>Python', onclick: () => { showPanel('console'); Q.runner.pyDiag((t) => log('sys', t)); } }));
     L.append(h('span', { class: 'sbi', id: 'sb-engine', title: '' }));
-    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 10', style: { opacity: '.55' } }));
+    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 11.1', style: { opacity: '.55' } }));
     R.append(h('div', { id: 'sb-ext', style: { display: 'flex', height: '100%' } }));
     R.append(h('button', { class: 'sbi', id: 'sb-pos', title: 'Go to line (Ctrl+G)', onclick: () => exec('edit.gotoLine') }));
     R.append(h('button', { class: 'sbi', id: 'sb-tab', title: 'Indentation', onclick: () => exec('settings.tabSize') }));
@@ -810,9 +826,9 @@
     const packSel = h('select', { id: 'set-sound' }, ...[['retro', 'Retro 8-bit'], ['soft', 'Soft modern']].map(([v, l]) => h('option', { value: v, selected: v === (settings.soundPack || 'retro'), text: l })));
     packSel.onchange = () => { settings.soundPack = packSel.value; saveSettings(); Q.sound?.play('right'); };
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Sound' }), tog('sound', 'Sound effects'), h('div', { class: 'set' }, h('label', { for: 'set-sound', text: 'Sound style' }), packSel)));
-    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Workspace' }), tog('livePreview', 'Live preview while typing'), tog('tutorFollow', 'Tutor follows your cursor'), tog('confirmDelete', 'Confirm before deleting')));
+    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Workspace' }), tog('livePreview', 'Live preview while typing'), (() => { const r = tog('simpleEditor', 'Simple editor (faster on slow computers)'); r.querySelector('.switch').addEventListener('click', () => toast('Reload the page to switch editors.', 'info', 2500)); return r; })(), tog('tutorFollow', 'Tutor follows your cursor'), tog('confirmDelete', 'Confirm before deleting')));
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Data' }),
-      h('div', { class: 'set' }, h('button', { class: 'btn', html: `${icon('copy', 14)} Back up everything`, onclick: () => exec('project.backup') }), h('button', { class: 'btn', html: `${icon('upload', 14)} Restore`, onclick: () => exec('project.restore') })),
+      h('div', { class: 'set' }, h('button', { class: 'btn', html: `${icon('copy', 14)} Back up everything`, onclick: () => exec('project.backup') }), h('button', { class: 'btn', html: `${icon('download', 14)} Download backup file`, onclick: () => exec('project.backupFile') }), h('button', { class: 'btn', html: `${icon('upload', 14)} Restore`, onclick: () => exec('project.restore') }), h('button', { class: 'btn', html: `${icon('refresh', 14)} Restore lost progress`, onclick: () => exec('learn.restoreProgress') })),
       h('div', { class: 'set' }, h('button', { class: 'btn ghost', text: 'Reset settings to defaults', onclick: async () => { if (await confirm('Reset settings?', 'Your files and progress stay. Only settings change.', false)) { Object.assign(settings, DEFAULTS); applySettings(); setTheme(DEFAULTS.theme); renderSettings(); } } }))));
   }
   function applySettings() { saveSettings(); editor.applySettings(editorOpts()); updateStatus(); }
@@ -882,7 +898,7 @@
     const sg = seg(segHost, [['project', 'This project'], ['all', 'Everything (backup)']], update);
     const body = h('div', {}, h('p', { html: 'Copy this text and keep it somewhere safe — a Google Doc, a note, or an email to yourself. To bring it back, open Codeditor on any computer and choose <b>File → Import project from pasted text</b>.' }), segHost, ta, note);
     modal({ title: 'Export & share', body, wide: true, buttons: [
-      ...(canZip() ? [{ label: 'Download .zip', onclick: () => { saveZip(); return false; } }] : []),
+      ...(canZip() ? [{ label: 'Download file', onclick: () => { scope === 'all' ? saveBackupFile() : saveZip(); return false; } }] : []),
       { label: 'Close', value: null },
       { label: 'Copy text', primary: true, onclick: () => { copyText(ta.value, scope === 'all' ? 'Backup copied' : 'Project copied'); Q.learn.badge('shipper'); } },
     ] });
@@ -988,6 +1004,8 @@
     cmd('project.importText', 'Import project from pasted text…', 'Project', () => importDialog());
     cmd('project.zip', 'Download project as .zip', 'Project', () => { if (!canZip()) return exportDialog(); saveZip(); });
     cmd('project.backup', 'Back up everything…', 'Project', () => exportDialog('all'));
+    cmd('project.backupFile', 'Download backup file (everything)', 'Project', () => (canZip() ? saveBackupFile() : exportDialog('all')));
+    cmd('learn.restoreProgress', 'Restore lost progress…', 'Learn', () => Q.progress?.restorePicker());
     cmd('project.restore', 'Restore from backup…', 'Project', () => importDialog('all'));
     cmd('project.restoreFile', 'Restore from backup file…', 'Project', async () => {
       const files = await pickFiles({ accept: '.json' }); if (!files[0]) return;
@@ -1015,7 +1033,7 @@
     const relayout = () => { syncLayoutBtns(); editor.layout(); setTimeout(() => editor.layout(), 360); };
     cmd('view.sidebar', 'Toggle sidebar', 'View', () => { const hidden = app.classList.contains('no-sidebar'); settings.hideSidebar = !hidden; focusHid = false; app.classList.toggle('no-sidebar', settings.hideSidebar); saveSettings(); relayout(); }, 'Ctrl+B');
     cmd('view.panel', 'Toggle console panel', 'View', () => { settings.hidePanel = !settings.hidePanel; app.classList.toggle('no-panel', settings.hidePanel); saveSettings(); relayout(); }, 'Ctrl+J');
-    cmd('view.right', 'Toggle right panel', 'View', () => { settings.hideRight = !settings.hideRight; app.classList.toggle('no-right', settings.hideRight); app.classList.toggle('show-right', !settings.hideRight); saveSettings(); if (!settings.hideRight) showRight(settings.rview); relayout(); }, 'Ctrl+Alt+B');
+    cmd('view.right', 'Toggle right panel', 'View', () => { settings.hideRight = !settings.hideRight; if (settings.hideRight) pausePreview(); app.classList.toggle('no-right', settings.hideRight); app.classList.toggle('show-right', !settings.hideRight); saveSettings(); if (!settings.hideRight) showRight(settings.rview); relayout(); }, 'Ctrl+Alt+B');
     cmd('view.zen', 'Toggle Zen mode', 'View', () => { app.classList.toggle('zen'); toast(app.classList.contains('zen') ? 'Zen mode — press Esc to exit' : 'Zen mode off', 'info', 1400); relayout(); }, 'Ctrl+K Z');
     cmd('view.explorer', 'Show explorer', 'View', () => showView('files'), 'Ctrl+Shift+E');
     cmd('view.search', 'Show search', 'View', () => showView('search'));
@@ -1075,7 +1093,7 @@
   addEventListener('keydown', onKey, true);
   app.classList.remove('loading');
 
-  editor = await Q.editorFactory.create($('#editor'), editorOpts());
+  editor = await Q.editorFactory.create($('#editor'), editorOpts(), { forceFallback: settings.simpleEditor || location.hash === '#lite' });
   editor._known = new Set();
   $('#editor-loading').remove();
   editor.onChange((id, value) => {
@@ -1087,7 +1105,7 @@
   editor.onCursor((info) => { lastCursor = info; updateStatus(info); if (settings.tutorFollow) Q.tutor.onCursor(info); Q.ext.onCursor(info); });
   editor.onMarkers(debounce(() => updateProblems(), 250));
 
-  Q.app = { focusLearn, reapply: () => editor.applySettings(editorOpts()), settings, editor, exec, openFile, openVirtual, closeVirtual, activate, showRight, showPanel, showView, log, clearConsole, refreshPreview, isVirtual, langOfId, renderTabs, setRunning, updateProblems, cmd, get virtuals() { return virtuals; } };
+  Q.app = { commands, focusLearn, reapply: () => editor.applySettings(editorOpts()), settings, editor, exec, openFile, openVirtual, closeVirtual, activate, showRight, showPanel, showView, log, clearConsole, refreshPreview, isVirtual, langOfId, renderTabs, setRunning, updateProblems, cmd, get virtuals() { return virtuals; } };
 
   Q.ext.init(Q.app);
   Q.tutor.init($('#tutor'));

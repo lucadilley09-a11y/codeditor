@@ -117,6 +117,7 @@
     const maybe = (since = S().lastSeen) => { const hrs = (Date.now() - since) / 36e5; if (hrs >= 2 && Object.keys(S().done).length) setTimeout(() => refresher({ hoursAway: hrs }), 900); };
     if (last) maybe(last);
     renderHomeCard();
+    setTimeout(() => snaps.take(), 3000); setInterval(() => snaps.take(), 10 * 60000);
   }
 
   /* ================= stats page ================= */
@@ -144,11 +145,38 @@
       <div class="st-grid2"><div class="st-sec"><h5>Strongest skills</h5>${strong.map(skillRow).join('') || '<p class="muted small">Get 80%+ on a skill to see it here.</p>'}</div>
       <div class="st-sec"><h5>Needs practice</h5>${weak.map(skillRow).join('') || `<p class="muted small">${skills.length ? 'Nothing below 80% — nice!' : 'Do some practice levels to see this.'}</p>`}</div></div>
       <div class="st-grid2"><div class="st-sec"><h5>Time per language</h5>${tl.map(([lang, sec]) => `<div class="st-row"><span class="st-n">${esc(Q.langs.byId[lang]?.name || lang)}</span><span class="st-meter"><i style="width:${(sec / tmax) * 100}%;background:${Q.langs.byId[lang]?.color || 'var(--accent)'}"></i></span><span class="st-v">${fmtT(sec)}</span></div>`).join('') || '<p class="muted small">Nothing yet.</p>'}</div>
-      <div class="st-sec"><h5>Streak calendar</h5><div class="st-cal">${cells}</div></div></div>`, buttons: [{ label: 'Close', primary: true }] });
+      <div class="st-sec"><h5>Streak calendar</h5><div class="st-cal">${cells}</div></div></div>`, buttons: [{ label: 'Restore lost progress…', onclick: () => { restorePicker(); return false; } }, { label: 'Close', primary: true }] });
     setTimeout(() => document.querySelectorAll('.stats-modal .gl').forEach((b) => (b.onclick = () => { S().goal = b.dataset.g; Q.learn.save(); document.querySelectorAll('.stats-modal .gl').forEach((x) => x.classList.toggle('on', x === b)); renderHomeCard(); })), 0);
     return m;
   }
 
+
+  /* ================= daily progress snapshots (IndexedDB, last 7 days) ================= */
+  const snaps = (() => {
+    let dbp;
+    const db = () => dbp || (dbp = new Promise((res, rej) => { const r = indexedDB.open('codeditor', 1); r.onupgradeneeded = () => r.result.createObjectStore('snap'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
+    const run = async (mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('snap', mode); const req = fn(t.objectStore('snap')); t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error); }); };
+    async function take() {
+      try {
+        if (!S().xp) return;
+        await run('readwrite', (st) => st.put({ at: Date.now(), xp: S().xp, lessons: Object.keys(S().done).length, data: JSON.stringify(S()) }, today()));
+        const keys = (await run('readonly', (st) => st.getAllKeys())).sort();
+        for (const k of keys.slice(0, -7)) await run('readwrite', (st) => st.delete(k));
+      } catch {}
+    }
+    const list = async () => { try { return ((await run('readonly', (st) => st.getAll())) || []).sort((a, b) => b.at - a.at); } catch { return []; } };
+    return { take, list };
+  })();
+  async function restorePicker() {
+    const items = await snaps.list();
+    const body = h('div', {}, h('p', { class: 'muted', text: 'Codeditor keeps a copy of your progress each day. Restoring adds back anything missing — it never removes progress you have now.' }));
+    if (!items.length) body.append(h('p', { text: 'No saved copies yet — they start after your first XP.' }));
+    items.forEach((it) => body.append(h('div', { class: 'st-row snap-row' },
+      h('span', { class: 'st-n', text: new Date(it.at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }),
+      h('span', { class: 'muted small', text: `${it.xp} XP · ${it.lessons} lesson${it.lessons === 1 ? "" : "s"}` }),
+      h('button', { class: 'btn', text: 'Restore', onclick: () => { try { Q.mergeProgress(S(), JSON.parse(it.data)); Q.learn.save(); Q.learn.renderSidebar(); Q.learn.renderXP?.(); renderHomeCard(); toast(`Restored — you have ${S().xp} XP`, 'success', 2500); } catch { toast('That copy couldn’t be read.', 'error'); } } }))));
+    Q.modal({ title: 'Restore lost progress', body, buttons: [{ label: 'Done', primary: true }] });
+  }
   /* ================= home card ================= */
   function homeCard() {
     const s = S(); const r = Q.ranks.current(); const [gn, gx] = goal(); const t = todayXP(); const rusty = rustyCount();
@@ -185,5 +213,5 @@
   Q.sound = { play };
 
   Q.refresher = { show: refresher, isRusty, rustyCount, graded };
-  Q.progress = { onXP, homeCard, renderHomeCard, showStats, boot, goal, todayXP };
+  Q.progress = { restorePicker, snaps, onXP, homeCard, renderHomeCard, showStats, boot, goal, todayXP };
 })();

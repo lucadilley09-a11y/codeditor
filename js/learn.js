@@ -70,7 +70,9 @@
   ];
 
   const state = Object.assign({ done: {}, xp: 0, streak: { last: null, count: 0 }, badges: {}, stats: {}, code: {}, perfect: {} }, store.get('learn', {}));
-  const save = debounce(() => store.set('learn', state), 200);
+  // merge with whatever another open copy saved, so a stale tab can never wipe newer progress
+  const save = debounce(() => store.set('learn', Q.mergeProgress(state, store.get('learn', {}))), 200);
+  store.watch?.('learn', (other) => { const xp = state.xp, n = Object.keys(state.done).length; Q.mergeProgress(state, other); if (state.xp !== xp || Object.keys(state.done).length !== n) { try { renderXP(); renderSidebar(); } catch {} } });
   const key = (c, l) => `${c}/${l}`;
   const today = () => new Date().toLocaleDateString('en-CA');
 
@@ -384,6 +386,7 @@
         : 'Couldn’t run the check: ' + esc(e.message);
       fb.append(h('div', { class: 'feedback bad', html: `${icon('alert', 16)}<div>${why}</div>` }));
     } finally {
+      if (S.course.run === 'web') { const f = document.getElementById('checkframe'); if (f) f.srcdoc = ''; } // stop the checked page's loops
       const b = document.getElementById('lesson-check'); if (b) { b.disabled = false; b.innerHTML = `${icon('play', 12)} Check <kbd style="background:transparent;border-color:#fff6;color:#fff">Ctrl ⏎</kbd>`; }
     }
   }
@@ -738,7 +741,7 @@
   };
 
   Q.learn = {
-    courses, H,
+    courses, H, renderXP,
     init(a) {
       app = a;
       renderXP();

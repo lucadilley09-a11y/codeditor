@@ -80,7 +80,30 @@
         return o.expect ? K().expectLines(r, o.expect) : true;
       };
     }
-    return { type: 'code', task, starter, solution: o.solution, hints: o.hints || [], check, page: o.page, mode: o.mode, stdin: o.stdin, success: o.success, ...base };
+    return { type: 'code', task, starter, solution: o.solution, hints: o.hints?.length >= 2 ? o.hints : (() => { const a = autoHints(tpl, starter, o.solution); return o.hints?.length ? [o.hints[0], a[1]].filter(Boolean) : a; })(), check, page: o.page, mode: o.mode, stdin: o.stdin, success: o.success, ...base };
+  }
+
+
+  /* two-step hints for generated levels: a nudge, then nearly the answer */
+  function autoHints(tpl, starter, solution) {
+    if (!solution) return [];
+    const code = (t) => `<code>${Q.esc(t.trim())}</code>`;
+    const sol = solution.split('\n'), st = (starter || '').split('\n');
+    const real = (l) => l.trim() && !/^\s*(#|\/\/|--)/.test(l);
+    if (tpl.kind === 'fix') {
+      let i = sol.findIndex((l, k) => (st[k] ?? '').trim() !== l.trim());
+      if (i < 0) i = 0;
+      return [`Run it and compare what happens with the task. Only one small thing is wrong — look closely around <b>line ${i + 1}</b>.`,
+        `Line ${i + 1} should be: ${code(sol[i] || '')}`];
+    }
+    if (tpl.kind === 'fill') {
+      const i = st.findIndex((l) => l.includes('____'));
+      return [`What does the task need here? Think about <b>${Q.esc(tpl.skill)}</b> — the blank is one small piece of code.`,
+        i >= 0 && sol[i] != null ? `Line ${i + 1} becomes: ${code(sol[i])}` : `The answer is: ${code(solution.split('\n').find(real) || solution)}`];
+    }
+    const lines = sol.filter(real);
+    return [`This one is about <b>${Q.esc(tpl.skill)}</b>. Work out the first thing the task needs, then add one line at a time.`,
+      lines.length > 1 ? `Start with ${code(lines[0])} — ${lines.length} lines in total.` : `You need just one line, like: ${code(lines[0] || solution)}`];
   }
 
   /* ---------- adaptive skill tracking ---------- */

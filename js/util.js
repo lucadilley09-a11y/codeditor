@@ -235,6 +235,9 @@ Q.APP = 'Codeditor'; // the app's name — change it here
 
   /* ---------- Storage ---------- */
   const store = {
+    /* other copies of the app (another tab, the chat preview) write to the same storage:
+       watch(key, fn) calls fn(newValue) when one of them saves */
+    watch(key, fn) { addEventListener('storage', (e) => { if (e.key === 'quill.' + key && e.newValue) { try { fn(JSON.parse(e.newValue)); } catch {} } }); },
     get(key, def) { try { const v = localStorage.getItem('quill.' + key); return v == null ? def : JSON.parse(v); } catch { return def; } },
     set(key, val) { try { localStorage.setItem('quill.' + key, JSON.stringify(val)); } catch (e) { toast('Storage is full — download a backup of your projects.', 'error'); } },
   };
@@ -255,5 +258,18 @@ Q.APP = 'Codeditor'; // the app's name — change it here
     })();
   }
 
-  Object.assign(Q, { $, $$, h, esc, uid, debounce, clamp, icon, toast, modal, prompt, confirm, contextMenu, download, zip, md, bus, store, confetti });
+  /* merge progress from another copy into ours: never lose done lessons, XP, badges or stats */
+  function mergeProgress(a, b) {
+    if (!b || typeof b !== 'object') return a;
+    for (const k of Object.keys(b)) {
+      const x = a[k], y = b[k];
+      if (!(k in a)) a[k] = y;
+      else if (typeof x === 'number' && typeof y === 'number') a[k] = Math.max(x, y);
+      else if (Array.isArray(x) && Array.isArray(y)) { const seen = new Set(x.map((v) => JSON.stringify(v))); y.forEach((v) => { if (!seen.has(JSON.stringify(v))) x.push(v); }); }
+      else if (x && y && typeof x === 'object' && typeof y === 'object') mergeProgress(x, y);
+      else if (typeof x === 'string' && typeof y === 'string' && /^\d{4}-\d\d-\d\d/.test(x) && /^\d{4}-\d\d-\d\d/.test(y) && y > x) a[k] = y;
+    }
+    return a;
+  }
+  Object.assign(Q, { mergeProgress, $, $$, h, esc, uid, debounce, clamp, icon, toast, modal, prompt, confirm, contextMenu, download, zip, md, bus, store, confetti });
 })();

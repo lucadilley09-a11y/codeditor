@@ -216,11 +216,23 @@ Everything saves automatically in your browser. Use **File → Download project*
     p.tabs = []; p.active = null; // first launch opens on the welcome screen
     projects = { [p.id]: p };
     currentId = p.id;
+    store.set('projects', projects); store.set('currentProject', currentId); // claim it now so other open copies reuse it
   }
   if (!projects[currentId]) currentId = Object.keys(projects)[0];
 
-  const save = Q.debounce(() => { store.set('projects', projects); store.set('currentProject', currentId); }, 250);
-  const saveNow = () => { store.set('projects', projects); store.set('currentProject', currentId); };
+  // another open copy may have saved too: keep the newest version of each project, never drop one we didn't delete
+  const deleted = new Set();
+  function mergeStored() {
+    const other = store.get('projects', {}) || {};
+    for (const [id, p] of Object.entries(other)) {
+      if (deleted.has(id)) continue;
+      if (!projects[id] || (id !== currentId && (p.updated || 0) > (projects[id].updated || 0))) projects[id] = p;
+    }
+  }
+  const write = () => { store.set('projects', projects); store.set('currentProject', currentId); }; // other copies' saves are merged in as they happen (watch below)
+  const save = Q.debounce(write, 250);
+  const saveNow = write;
+  store.watch?.('projects', () => { mergeStored(); bus.emit('projects:changed'); });
 
   const fs = {
     TEMPLATES,
@@ -272,7 +284,7 @@ Everything saves automatically in your browser. Use **File → Download project*
     switchProject(id) { if (projects[id]) { currentId = id; saveNow(); bus.emit('project:switched'); } },
     renameProject(id, name) { projects[id].name = name; saveNow(); bus.emit('project:renamed'); },
     deleteProject(id) {
-      delete projects[id];
+      delete projects[id]; deleted.add(id);
       if (!Object.keys(projects).length) { const p = makeProject('My Project', 'web'); projects[p.id] = p; }
       if (!projects[currentId]) currentId = Object.keys(projects)[0];
       saveNow(); bus.emit('project:switched');

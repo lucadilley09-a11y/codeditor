@@ -11,6 +11,12 @@
   const skillsOf = (tpls) => [...new Set(tpls.map((t) => t.skill))];
   const UNIT = 9;
 
+  // levels are generated the first time anything reads lesson.steps, not all at startup
+  function lazySteps(L, seed) {
+    Object.defineProperty(L, 'steps', { configurable: true, enumerable: true,
+      get() { const v = L.regen(seed); Object.defineProperty(L, 'steps', { value: v, writable: true, configurable: true, enumerable: true }); return v; },
+      set(v) { Object.defineProperty(L, 'steps', { value: v, writable: true, configurable: true, enumerable: true }); } });
+  }
   function buildCourse(c) {
     const p = packs[c.id]; if (!p || c.built) return;
     c.built = true;
@@ -47,7 +53,7 @@
         }
         return steps;
       };
-      L.steps = L.regen(hash(c.id + '/' + L.id));
+      lazySteps(L, hash(c.id + '/' + L.id));
     });
 
     /* 2. practice lessons */
@@ -68,7 +74,7 @@
             const intro = { type: 'read', html: `<h4>${vname}</h4><p>${n - 1} levels, generated just for you — they change every time you open this lesson. Levels you miss come back at the end for another try.</p>${sk.length ? `<p class="muted">Focus: ${sk.map(Q.gen.esc).join(' · ')}</p>` : ''}` };
             return [intro, ...levels(c.id, avail(i), n - 1, seed, { focus: recent(i), bias })];
           } };
-        P.steps = P.regen(hash(c.id + '/' + P.id));
+        lazySteps(P, hash(c.id + '/' + P.id));
         seq.push(P);
       }
     });
@@ -99,7 +105,7 @@
         const T = { id: `unit${n}-out`, title: `Test out of Unit ${n}`, kind: 'testout', optional: true, xp: 10, ai: hi,
           recap: 'Pass with 80% to mark the whole unit as done.',
           regen: (seed) => [{ type: 'read', html: `<h4>Already know this?</h4><p>Score <b>80%</b> on these ${10} levels and every lesson in <b>${Q.gen.esc(title)}</b> is marked as done. Fail and nothing changes — you just do the lessons.</p><p class="muted">Skills: ${skillsOf(tpls).map(Q.gen.esc).join(' · ')}</p>` }, ...levels(c.id, tpls, 10, seed, { focusShare: 0 })] };
-        T.steps = T.regen(hash(c.id + T.id)); add(T);
+        lazySteps(T, hash(c.id + T.id)); add(T);
       }
       let sinceChallenge = 0;
       ls.forEach((l) => {
@@ -111,14 +117,14 @@
           const C = { id: `ch-${l.id}`, title: `Challenge: ${short(hand[anchor].title)}`, kind: 'challenge', optional: true, xp: 50, ai: anchor,
             recap: 'Challenges are optional. Beat the timer for stars and bonus XP.',
             regen: (seed) => { const g = G(seed); return levels(c.id, avail(anchor).filter((t) => t.kind !== 'predict' && t.kind !== 'quiz'), g.int(3, 5), seed, { focus: recent(anchor), hard: true }); } };
-          C.steps = C.regen(hash(c.id + C.id)); add(C);
+          lazySteps(C, hash(c.id + C.id)); add(C);
         }
       });
       if (tpls.length >= 3) {
         const T = { id: `unit${n}-test`, title: `Unit ${n} test`, kind: 'test', xp: 40, ai: hi,
           recap: 'Unit tests mix everything from the unit. 80% passes.',
           regen: (seed) => [{ type: 'read', html: `<h4>Unit ${n} test</h4><p>10 levels mixing everything from this unit. You need <b>80%</b> to pass. If you don’t make it, you’ll see what you missed, practise it, and try again with new levels.</p>` }, ...levels(c.id, tpls, 10, seed, { focusShare: 0 })] };
-        T.steps = T.regen(hash(c.id + T.id)); add(T);
+        lazySteps(T, hash(c.id + T.id)); add(T);
       }
       c.units.push(unit);
     });

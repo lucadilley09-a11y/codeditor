@@ -1,7 +1,8 @@
 /* Codeditor — editor adapter: Monaco (VS Code's editor) when online, built-in lightweight editor as an offline fallback */
 (() => {
   const { h, esc, bus } = Q;
-  const MONACO = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
+  // Monaco ships with the app: the hosted page blocks stylesheets and fonts from other sites
+  const MONACO = new URL('vendor/monaco', location.href).href;
 
   const completionProviders = []; // {langs:[...]|'*', fn(ctx) => items}
 
@@ -175,6 +176,7 @@
       reveal(line, col = 1) { ed.revealLineInCenter(line); ed.setPosition({ lineNumber: line, column: col }); ed.focus(); },
       selection() { const m = ed.getModel(); const s = ed.getSelection(); return m && s ? m.getValueInRange(s) : ''; },
       command(name) {
+        if (!ed.getModel()) return Q.toast('Open a file first.', 'info', 1500);
         const map = { find: 'actions.find', replace: 'editor.action.startFindReplaceAction', gotoLine: 'editor.action.gotoLine', comment: 'editor.action.commentLine', foldAll: 'editor.foldAll', unfoldAll: 'editor.unfoldAll', duplicate: 'editor.action.copyLinesDownAction', palette: 'editor.action.quickCommand', rename: 'editor.action.rename', undo: 'undo', redo: 'redo', selectAll: 'editor.action.selectAll', multiCursorNext: 'editor.action.addSelectionToNextFindMatch', zoomIn: 'editor.action.fontZoomIn', zoomOut: 'editor.action.fontZoomOut', upper: 'editor.action.transformToUppercase', lower: 'editor.action.transformToLowercase', sortLines: 'editor.action.sortLinesAscending', moveUp: 'editor.action.moveLinesUpAction', moveDown: 'editor.action.moveLinesDownAction', deleteLine: 'editor.action.deleteLines', trimWhitespace: 'editor.action.trimTrailingWhitespace' };
         ed.focus();
         if (name === 'undo' || name === 'redo') { ed.trigger('quill', name, null); return; }
