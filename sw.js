@@ -1,5 +1,5 @@
 /* Quill service worker: caches the app so it opens offline. CDN assets (editor engine, Python) are cached after first use. */
-const VERSION = 'cd-v8';
+const VERSION = 'cd-v10';
 const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.json',
   'js/util.js', 'js/langs.js', 'js/themes.js', 'js/fs.js', 'js/editor-lite.js', 'js/editor.js', 'js/runner.js', 'js/tutor-data.js', 'js/tutor.js',
   'js/langinfo.js', 'js/courses/_kit.js', 'js/courses/web.js', 'js/courses/game.js', 'js/courses/javascript.js', 'js/courses/python.js', 'js/courses/more.js', 'js/courses/more2.js', 'js/courses/ext-js.js', 'js/courses/ext-py.js', 'js/courses/ext-web.js', 'js/courses/ext-more.js', 'js/courses/ext-more2.js', 'js/courses/ext-more3.js', 'js/courses/projects.js', 'js/courses/projects2.js', 'js/courses/projects3.js', 'js/gen/core.js', 'js/gen/js.js', 'js/gen/game.js', 'js/gen/dom.js', 'js/gen/py.js', 'js/gen/cs.js', 'js/gen/lua.js', 'js/gen/cpp.js', 'js/gen/build.js', 'js/learn.js', 'js/progress.js', 'js/extensions.js', 'js/app.js'];

@@ -1,6 +1,7 @@
 /* Codeditor — code runners: web preview, JavaScript (worker), TypeScript, Python (Pyodide worker) */
 (() => {
-  const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+  // Python ships with the app (py/ folder): the hosted page may not download data files from other sites
+  const PYODIDE = new URL('py/', location.href).href;
 
   // Shared value formatter (stringified into iframes/workers too)
   const FMT = `function __fmt(v, d) {
@@ -119,7 +120,7 @@
   const PY_WORKER = `
     importScripts('${PYODIDE}pyodide.js');
     let py = null, stdin = [];
-    const ready = loadPyodide({ indexURL: '${PYODIDE}' }).then((p) => {
+    const ready = loadPyodide({ indexURL: '${PYODIDE}', stdLibURL: '${PYODIDE}python_stdlib.wasm' }).then((p) => {
       py = p;
       py.setStdout({ batched: (s) => postMessage({ type: 'log', text: s }) });
       py.setStderr({ batched: (s) => postMessage({ type: 'warn', text: s }) });
@@ -160,6 +161,32 @@
     };
     pyWorker.onerror = (e) => { e.preventDefault(); pyState = 'error'; Q.bus.emit('py:status', pyState, e.message || 'Could not load Python (are you offline?)'); pyReadyWaiters.forEach((f) => f(false)); pyReadyWaiters = []; pyWorker && pyWorker.terminate(); pyWorker = null; };
   }
+
+  /* ---------- Python diagnostics: test each loading step, report what breaks ---------- */
+  const DIAG_WORKER = `
+    const U = '${PYODIDE}', say = (t) => postMessage(t);
+    (async () => {
+      try { importScripts(U + 'pyodide.js'); say('worker importScripts pyodide.js: ok (' + typeof loadPyodide + ')'); } catch (e) { say('worker importScripts pyodide.js: FAIL ' + e.message); }
+      try { importScripts(U + 'pyodide.asm.js'); say('worker importScripts pyodide.asm.js: ok'); } catch (e) { say('worker importScripts pyodide.asm.js: FAIL ' + e.message); }
+      for (const f of ['pyodide-lock.json', 'python_stdlib.wasm']) {
+        try { const r = await fetch(U + f); const b = await r.arrayBuffer(); say('worker fetch ' + f + ': ' + r.status + ' ' + b.byteLength + 'B'); } catch (e) { say('worker fetch ' + f + ': FAIL ' + e.message); }
+      }
+      try { const r = await fetch(U + 'pyodide.asm.wasm'); const b = await r.arrayBuffer(); say('worker fetch wasm: ' + r.status + ' ' + b.byteLength + 'B');
+        try { await WebAssembly.compile(b); say('worker wasm compile: ok'); } catch (e) { say('worker wasm compile: FAIL ' + e.message); } } catch (e) { say('worker fetch wasm: FAIL ' + e.message); }
+      say('done');
+    })();`;
+  function pyDiag(out) {
+    const t0 = performance.now(), T = () => ((performance.now() - t0) / 1000).toFixed(1) + 's ';
+    out('Python check-up: testing each step…');
+    out('page: origin=' + location.origin + ' isolated=' + self.crossOriginIsolated);
+    fetch(PYODIDE + 'pyodide-lock.json').then((r) => out(T() + 'page fetch lock: ' + r.status)).catch((e) => out(T() + 'page fetch lock: FAIL ' + e.message));
+    try { const x = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]); WebAssembly.compile(x).then(() => out(T() + 'page tiny wasm compile: ok')).catch((e) => out(T() + 'page tiny wasm compile: FAIL ' + e.message)); } catch (e) { out('page wasm: FAIL ' + e.message); }
+    let w; try { w = new Worker(URL.createObjectURL(new Blob([DIAG_WORKER], { type: 'text/javascript' }))); } catch (e) { out('blob worker: FAIL ' + e.message); return; }
+    out('blob worker: started');
+    w.onmessage = (e) => { out(T() + e.data); if (e.data === 'done') w.terminate(); };
+    w.onerror = (e) => { out(T() + 'worker error: ' + (e.message || 'unknown')); e.preventDefault(); };
+    setTimeout(() => { out(T() + 'check-up stopped after 90s'); w.terminate(); }, 90000);
+  }
   function pyReady(limit = 60000) {
     ensurePy();
     if (pyState === 'ready') return Promise.resolve(true);
@@ -196,7 +223,7 @@
   }
 
   Q.runner = {
-    buildPage, runJS, stopJS, runPython, stopPython, pyReady,
+    buildPage, runJS, stopJS, runPython, stopPython, pyReady, pyDiag,
     get pyState() { return pyState; },
     stop() { return stopJS() | stopPython(); },
   };

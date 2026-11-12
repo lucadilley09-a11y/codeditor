@@ -379,7 +379,7 @@
     } catch (e) {
       fb.innerHTML = '';
       if (e.message === 'slow') { Q.runner.stopJS(); Q.runner.stopPython(); }
-      const why = e.message === 'offline' ? 'Python couldn’t load — it downloads from the internet the first time (some school networks block it). Check your connection and press Check again.'
+      const why = e.message === 'offline' ? 'Python couldn’t start. Reload the page and press Check again — the first start can take a few seconds. Click “Python” in the bottom bar for a check-up.'
         : e.message === 'slow' ? 'The check took too long, so it was stopped. Press Check again — if it keeps happening, look for an endless loop.'
         : 'Couldn’t run the check: ' + esc(e.message);
       fb.append(h('div', { class: 'feedback bad', html: `${icon('alert', 16)}<div>${why}</div>` }));
