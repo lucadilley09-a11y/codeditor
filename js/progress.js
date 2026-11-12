@@ -69,6 +69,9 @@
     cands.sort((a, b) => a.due - b.due); // most overdue first
     const out = []; let seed = Q.gen.freshSeed();
     for (const x of cands) { if (out.length >= n) break; const q = questionFor(x.c, x.l, seed++); if (q) out.push({ ...x, q }); }
+    // swap one question for a bug you fixed before
+    const jq = n >= 3 && Q.journal?.question(seed);
+    if (jq && out.length >= 2) out.splice(Math.floor(out.length / 2), 1, jq);
     return out;
   }
   const rustyCount = () => { let n = 0; for (const c of Q.learn.courses) for (const l of c.lessons) if (!l.optional && isRusty(c.id, l.id)) n++; return n; };
@@ -145,7 +148,8 @@
       <div class="st-grid2"><div class="st-sec"><h5>Strongest skills</h5>${strong.map(skillRow).join('') || '<p class="muted small">Get 80%+ on a skill to see it here.</p>'}</div>
       <div class="st-sec"><h5>Needs practice</h5>${weak.map(skillRow).join('') || `<p class="muted small">${skills.length ? 'Nothing below 80% — nice!' : 'Do some practice levels to see this.'}</p>`}</div></div>
       <div class="st-grid2"><div class="st-sec"><h5>Time per language</h5>${tl.map(([lang, sec]) => `<div class="st-row"><span class="st-n">${esc(Q.langs.byId[lang]?.name || lang)}</span><span class="st-meter"><i style="width:${(sec / tmax) * 100}%;background:${Q.langs.byId[lang]?.color || 'var(--accent)'}"></i></span><span class="st-v">${fmtT(sec)}</span></div>`).join('') || '<p class="muted small">Nothing yet.</p>'}</div>
-      <div class="st-sec"><h5>Streak calendar</h5><div class="st-cal">${cells}</div></div></div>`, buttons: [{ label: 'Restore lost progress…', onclick: () => { restorePicker(); return false; } }, { label: 'Close', primary: true }] });
+      <div class="st-sec"><h5>Streak calendar</h5><div class="st-cal">${cells}</div></div></div>
+      <div class="st-sec"><h5>Mistake heatmap</h5>${Q.mistakes ? Q.mistakes.html() : ''}</div>`, buttons: [{ label: 'Bug journal', onclick: () => { Q.journal?.show(); return false; } }, { label: 'Restore lost progress…', onclick: () => { restorePicker(); return false; } }, { label: 'Close', primary: true }] });
     setTimeout(() => document.querySelectorAll('.stats-modal .gl').forEach((b) => (b.onclick = () => { S().goal = b.dataset.g; Q.learn.save(); document.querySelectorAll('.stats-modal .gl').forEach((x) => x.classList.toggle('on', x === b)); renderHomeCard(); })), 0);
     return m;
   }

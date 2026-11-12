@@ -252,8 +252,13 @@
     return Q.fs.list().filter((f) => f !== curId).map((f) => (dir && f.startsWith(dir + '/') ? f.slice(dir.length + 1) : dir ? '../'.repeat(dir.split('/').length) + f : f)).filter((f) => f.toLowerCase().startsWith(prefix.toLowerCase()));
   }
 
+  const initFns = [];
   Q.ext = {
     list: LIST, isOn,
+    /* add an extension from another file (keeps its saved on/off state) */
+    register(e) { if (LIST.some((x) => x.id === e.id)) return; LIST.push(e); state[e.id] = saved[e.id] ?? e.on; if (app) app.cmd('ext.' + e.id, `Toggle extension: ${e.name}`, 'Extensions', () => Q.ext.toggle(e.id)); },
+    onInit(fn) { app ? fn(app) : initFns.push(fn); },
+    onToggle: [],
     emmet,
     editorFlags() { const o = {}; LIST.filter((e) => e.flag).forEach((e) => (o[e.id] = isOn(e.id))); return o; },
     toggle(id) {
@@ -263,6 +268,7 @@
       app.reapply(); renderStatus();
       const a = app.editor.activeId; scanTodos(a); lens(a); paintMarks(a);
       if (id === 'focusTimer' && !state[id]) { clearInterval(timer.t); timer.running = false; }
+      Q.ext.onToggle.forEach((f) => { try { f(id, state[id]); } catch (err) { console.warn(err); } });
       Q.learn.badge('tinkerer');
     },
     init(a) {
@@ -340,6 +346,7 @@
         if (k === 'j') { e.preventDefault(); e.stopPropagation(); jumpMark(-1); }
       }, true);
       renderStatus();
+      initFns.splice(0).forEach((f) => { try { f(app); } catch (err) { console.warn(err); } });
     },
     onActivate(id) { scanTodos(id); lens(id); paintMarks(id); countWords(); },
     onMarkers(id) { lens(id); },

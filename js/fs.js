@@ -226,7 +226,7 @@ Everything saves automatically in your browser. Use **File → Download project*
     const other = store.get('projects', {}) || {};
     for (const [id, p] of Object.entries(other)) {
       if (deleted.has(id)) continue;
-      if (!projects[id] || (id !== currentId && (p.updated || 0) > (projects[id].updated || 0))) projects[id] = p;
+      if (!projects[id] || (p.updated || 0) > (projects[id].updated || 0)) projects[id] = p; // newest copy wins, open project included (the app refreshes open editors)
     }
   }
   const write = () => { store.set('projects', projects); store.set('currentProject', currentId); }; // other copies' saves are merged in as they happen (watch below)

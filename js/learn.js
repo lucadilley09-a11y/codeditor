@@ -78,8 +78,9 @@
 
   /* ---------- Levels ---------- */
   function levelInfo(xp = state.xp) {
-    let lvl = 1, need = 100, base = 0;
-    while (xp >= base + need) { base += need; lvl++; need = 100 + (lvl - 1) * 50; }
+    let lvl = 1, need, base = 0;
+    need = 60; // faster early, slower late
+    while (xp >= base + need) { base += need; lvl++; const j = lvl - 1; need = 60 + 20 * j + 3 * j * j; }
     return { lvl, into: xp - base, need, pct: Math.round(((xp - base) / need) * 100) };
   }
   const TITLES = ['Newbie', 'Apprentice', 'Tinkerer', 'Builder', 'Coder', 'Hacker', 'Engineer', 'Architect', 'Wizard', 'Legend'];
@@ -169,7 +170,11 @@
     S = { course, lesson, i: 0, attempts: 0, mistakes: 0, solved: {}, hint: 0, usedHints: false, started: Date.now(), stepStart: Date.now(), missed: new Set() };
     if (lesson.kind === 'challenge') S.limit = timeLimit(lesson);
     clearInterval(timerId); if (S.limit) timerId = setInterval(tickTimer, 1000);
-    if (!lesson.temp) { state.current = { course: course.id, lesson: lesson.id }; save(); }
+    // resume on the exact level you were on (not for tests or timed challenges)
+    const cur = state.current;
+    const canResume = !lesson.temp && !['test', 'testout', 'challenge'].includes(lesson.kind) && cur && cur.course === course.id && cur.lesson === lesson.id && cur.step > 0 && cur.step < lesson.steps.length && !state.done[key(course.id, lesson.id)];
+    if (canResume) { S.i = cur.step; for (let j = 0; j < cur.step; j++) S.solved[j] = true; }
+    if (!lesson.temp) { state.current = { course: course.id, lesson: lesson.id, step: S.i, open: true }; save(); }
     app.showRight('lesson');
     if (hasCode(lesson)) {
       const first = lesson.steps.find((s) => s.type === 'code');
@@ -182,6 +187,7 @@
   function close() {
     if (!S) return;
     persistCode(); clearInterval(timerId);
+    if (state.current) { state.current.open = false; save(); }
     const id = tabId(); S = null;
     app.focusLearn && app.focusLearn(false);
     if (app.virtuals.has(id)) app.closeVirtual(id);
@@ -194,6 +200,7 @@
     persistCode();
     const prev = step();
     S.i = Math.max(0, Math.min(S.lesson.steps.length, i)); S.attempts = 0; S.hint = 0; S.stepStart = Date.now();
+    if (!S.lesson.temp && state.current?.lesson === S.lesson.id) { state.current.step = S.i < S.lesson.steps.length ? S.i : 0; save(); }
     const st = step();
     if (st && st.type === 'code' && st.starter != null && !st.keep && prev !== st) {
       // only replace code when the step brings new starter code and hasn't been solved before
@@ -271,19 +278,48 @@
           stat('quizzes'); if (S.attempts === 0) stat('quizFirst');
         } else {
           b.classList.add('wrong'); b.disabled = true; S.attempts++; S.mistakes++; S.missed.add(S.i);
+          Q.mistakes?.note({ quiz: true }, S.course.lang);
           noteResult(st, false); requeue(st); Q.sound?.play('wrong');
           fb.innerHTML = ''; fb.append(h('div', { class: 'feedback bad', html: `${icon('close', 16)}<div><b>Not quite.</b> ${st.wrong?.[j] || 'Have another look and try again.'}</div>` }));
+          if (st.type === 'predict' && st.code && ['js', 'ts', 'py', 'web'].includes(S.course.run)) {
+            const course = S.course;
+            const tb = h('button', { class: 'btn ghost sm trace-btn', html: `${icon('play', 12)} Show me step by step`, onclick: async () => {
+              tb.disabled = true; tb.innerHTML = `<div class="spinner" style="width:12px;height:12px"></div> Tracing…`;
+              const rows = await Q.explain.trace(st.code, course.run);
+              tb.replaceWith(Q.explain.renderTrace(rows, st.code)); S.usedHints = true;
+            } });
+            fb.append(tb);
+          }
         }
       };
       opts.append(b);
     });
     body.append(opts, fb);
+    if ((state.stats?.quizzes || 0) < 6 && !S.solved[S.i]) body.append(h('div', { class: 'kb-tip', html: 'Tip: press <kbd>1</kbd>–<kbd>4</kbd> to answer, <kbd>Enter</kbd> to continue' }));
     if (S.solved[S.i]) fb.append(h('div', { class: 'feedback good', html: `${icon('check', 16)}<div>${st.explain || 'Correct!'}</div>` }));
     foot.append(h('div', { class: 'grow' }), next);
     // keyboard: 1-4 / A-D to answer
     body.tabIndex = -1;
   }
 
+  /* keyboard: 1–4 (or A–D) answer quizzes, Enter continues — never while typing */
+  addEventListener('keydown', (e) => {
+    if (!S || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.modal-back')) return;
+    const t = e.target; if (t && t.closest && t.closest('input, textarea, select, [contenteditable], .monaco-editor, .cm-editor, #editor')) return;
+    const h0 = host(); if (!h0 || !h0.offsetParent) return;
+    const opts = [...h0.querySelectorAll('.qopt')];
+    const k = e.key.toLowerCase(); const n = '1234'.indexOf(k) >= 0 ? '1234'.indexOf(k) : 'abcd'.indexOf(k);
+    if (opts.length && n >= 0 && k.length === 1) { const b = opts[n]; if (b && !b.disabled) { e.preventDefault(); b.click(); } return; }
+    if (e.key === 'Enter') { const b = h0.querySelector('.lfoot .btn.good:not(:disabled), .lfoot .btn.primary:not(:disabled):not(#lesson-check)'); if (b) { e.preventDefault(); b.click(); } }
+  });
+
+  /* raylib lessons: a simulated game preview right inside the lesson */
+  function inlineRaylib(code) {
+    const box = host()?.querySelector('.rl-inline'); if (!box) return;
+    box.innerHTML = '';
+    box.append(h('iframe', { class: 'rl-frame', sandbox: 'allow-scripts', title: 'raylib preview', srcdoc: Q.raylib.page(code) }));
+    box.classList.add('on');
+  }
   let previewFrame = null;
   function renderCode(st, body, foot) {
     if (st.html && !st.task) body.append(richText(st.html));
@@ -298,6 +334,10 @@
       body.append(h('div', { class: 'section-label', style: { padding: '4px 0 6px' }, text: 'Live preview' }), previewFrame);
       updatePreview();
     } else previewFrame = null;
+    if (S.course.lang === 'cpp' && Q.raylib && (Q.raylib.isRaylib(st.solution) || Q.raylib.isRaylib(st.starter))) {
+      const box = h('div', { class: 'rl-inline' });
+      body.append(h('div', { class: 'rl-head' }, h('span', { class: 'section-label', text: 'Game preview (simulated)' }), h('button', { class: 'btn ghost sm', html: `${icon('play', 12)} Run game`, onclick: () => inlineRaylib(app.editor.get(tabId()) || '') })), box);
+    }
     const hints = st.hints || [];
     const hintBtn = h('button', { class: 'btn ghost', html: `${icon('bulb', 14)} Hint`, title: 'Get a hint', disabled: !hints.length, onclick: () => {
       const hi = hints[Math.min(S.hint, hints.length - 1)]; S.hint++; S.usedHints = true;
@@ -312,10 +352,15 @@
     const locked = S.lesson.kind === 'challenge' && S.attempts < 3 && !S.solved[S.i];
     if (locked) { hintBtn.style.display = solBtn.style.display = 'none'; foot.append(h('span', { class: 'muted small', id: 'help-locked', text: 'Hints unlock after 3 tries' })); }
     hintBtn.id = 'lesson-hint'; solBtn.id = 'lesson-sol';
+    const playBtn = h('button', { class: 'btn ghost', id: 'lesson-play', html: `${icon('box', 14)} Sandbox`, title: 'Copy this code into your sandbox to play with it freely', onclick: () => {
+      const code = app.editor.has(tabId()) ? app.editor.get(tabId()) : st.starter || '';
+      persistCode(); Q.sandbox?.playWith({ course: S.course, lesson: S.lesson, step: st, code });
+    } });
     const isTest = S.lesson.kind === 'test' || S.lesson.kind === 'testout';
     if (isTest) { hintBtn.style.display = solBtn.style.display = 'none'; }
+    if (isTest || S.lesson.kind === 'challenge') playBtn.style.display = 'none';
     const skipBtn = isTest && !S.solved[S.i] ? h('button', { class: 'btn ghost', text: 'Skip', title: 'Skip this level (counts as missed)', onclick: () => { S.missed.add(S.i); S.solved[S.i] = true; go(S.i + 1); } }) : '';
-    foot.append(hintBtn, solBtn, h('div', { class: 'grow' }), skipBtn, S.solved[S.i] ? nextBtn : checkBtn);
+    foot.append(hintBtn, solBtn, playBtn, h('div', { class: 'grow' }), skipBtn, S.solved[S.i] ? nextBtn : checkBtn);
     if (app.virtuals.has(tabId()) && app.editor.activeId !== tabId()) app.activate(tabId());
   }
 
@@ -336,6 +381,7 @@
     if (!S) return;
     const st = step(); if (!st || st.type !== 'code') return;
     const code = app.editor.get(tabId()) ?? '';
+    if (S.course.lang === 'cpp' && Q.raylib?.isRaylib(code)) inlineRaylib(code);
     const btn = document.getElementById('lesson-check'); if (btn) { btn.disabled = true; btn.innerHTML = `<div class="spinner" style="width:14px;height:14px"></div> ${S.course.run === 'py' && Q.runner.pyState !== 'ready' ? 'Loading Python…' : 'Checking…'}`; }
     const fb = document.getElementById('lesson-fb');
     const r = { code, logs: [], errors: [], out: '' };
@@ -363,9 +409,12 @@
       r.out = r.logs.join('\n');
       if (r.logs.length || r.errors.length) app.showPanel('console');
       let res;
+      const jw = key(S.course.id, S.lesson.id) + '#' + S.i;
+      if (r.errors.length) Q.journal?.noteError({ where: jw, err: r.errors[0], code, lang: S.course.lang, c: S.course.id, l: S.lesson.temp ? (S.lesson.retryOf || null) : S.lesson.id, title: S.lesson.title });
       if (r.errors.length) res = false; else try { res = st.check(r, H); } catch (e) { res = 'Something in your code stopped the check from running: ' + esc(e.message); }
-      if (res === true && !r.errors.length) return success(st, fb);
+      if (res === true && !r.errors.length) { Q.journal?.noteSuccess({ where: jw, code }); return success(st, fb); }
       S.attempts++; S.mistakes++; S.missed.add(S.i);
+      Q.mistakes?.note({ err: r.errors[0], msg: typeof res === 'string' ? res : '' }, S.course.lang);
       stat('failedChecks'); noteResult(st, false); requeue(st); Q.sound?.play('wrong');
       if (S.lesson.kind === 'challenge' && S.attempts >= 3) { ['lesson-hint', 'lesson-sol'].forEach((id) => { const b = document.getElementById(id); if (b) b.style.display = ''; }); document.getElementById('help-locked')?.remove(); }
       fb.innerHTML = '';
@@ -376,6 +425,10 @@
       } else {
         const msg = typeof res === 'string' ? res : 'Not quite yet — compare your code with the task and try again.';
         fb.append(h('div', { class: 'feedback bad', html: `${icon('close', 16)}<div><b>${pick(['Almost!', 'Not yet.', 'Close!', 'Keep going.'])}</b> ${msg}</div>` }));
+        if (st.gkind === 'fix' && st.solution && S.lesson.kind !== 'test' && S.lesson.kind !== 'testout' && !(S.lesson.kind === 'challenge' && S.attempts < 3)) {
+          const fx = h('button', { class: 'btn ghost sm trace-btn', html: `${icon('eye', 12)} Show what’s wrong`, onclick: () => { fx.replaceWith(Q.explain.fixDiff(st.starter, st.solution)); S.usedHints = true; } });
+          fb.append(fx);
+        }
         if (S.attempts >= 2 && st.hints?.length && S.hint === 0) fb.append(h('div', { class: 'feedback hint', html: `${icon('bulb', 16)}<div>Stuck? Click <b>Hint</b> below for a nudge.</div>` }));
       }
     } catch (e) {
@@ -560,7 +613,31 @@
       <div class="cert-line">completed the capstone of</div>
       <div class="cert-course">${esc(course.title)}</div>
       <div class="cert-stats"><div><b>${done}</b><span>lessons</span></div><div><b>${all ? Math.round((ok / all) * 100) + '%' : '—'}</b><span>accuracy</span></div><div><b>${rank ? esc(rank.name) : 'Level ' + levelInfo().lvl}</b><span>rank</span></div></div>
-      <div class="cert-date">${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} · ${esc(Q.APP)}</div></div>`, buttons: [{ label: 'Close', primary: true }] });
+      <div class="cert-date">${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} · ${esc(Q.APP)}</div></div>`, buttons: [
+      { label: 'Watch my code', onclick: () => { Q.replay?.show(course); return false; } },
+      { label: 'Save as image', onclick: () => { saveCertPng(course, { done, acc: all ? Math.round((ok / all) * 100) + '%' : '—', rank: rank ? rank.name : 'Level ' + levelInfo().lvl }); return false; } },
+      { label: 'Close', primary: true }] });
+  }
+  /* draw the certificate on a canvas and save it as a PNG */
+  async function saveCertPng(course, { done, acc, rank }) {
+    const W = 1600, H = 1000, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+    try { await document.fonts?.ready; } catch {}
+    const col = course.color || '#f5b942';
+    const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#0f141d'); bg.addColorStop(1, '#171e2b'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(40, 40, W - 80, H - 80); g.globalAlpha = 0.35; g.lineWidth = 2; g.strokeRect(62, 62, W - 124, H - 124); g.globalAlpha = 1;
+    const font = (w, px) => `${w} ${px}px Geist, Inter, system-ui, sans-serif`;
+    const center = (t, y, f, color) => { g.font = f; g.fillStyle = color; g.textAlign = 'center'; g.fillText(t, W / 2, y); };
+    center('CERTIFICATE OF COMPLETION', 190, font(600, 30), '#9aa6b8');
+    let size = 104; g.font = font(700, size); while (g.measureText(state.name || 'Coder').width > W - 300 && size > 40) { size -= 4; g.font = font(700, size); }
+    center(state.name || 'Coder', 340, font(700, size), '#ffffff');
+    center('completed the capstone of', 420, font(400, 34), '#9aa6b8');
+    center(course.title, 500, font(700, 58), col);
+    [[String(done), 'LESSONS'], [acc, 'ACCURACY'], [rank, 'RANK']].forEach(([v, l], i) => { const x = W / 2 + (i - 1) * 360; g.textAlign = 'center'; g.font = font(700, 54); g.fillStyle = '#fff'; g.fillText(v, x, 660); g.font = font(600, 22); g.fillStyle = '#7d889a'; g.fillText(l, x, 700); });
+    center(`${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} · ${Q.APP}`, 860, font(400, 26), '#7d889a');
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    const name = `${(course.title || 'certificate').replace(/[^\w-]+/g, '-')}-certificate.png`;
+    if (Q.app?.saveFile) return Q.app.saveFile(name, blob);
+    Q.download(name, blob);
   }
   const today2 = () => new Date().toLocaleDateString('en-CA');
   function logDay(xp, secs = 0) { state.days = state.days || {}; const d = (state.days[today2()] = state.days[today2()] || { xp: 0, secs: 0 }); d.xp += xp; d.secs += secs; }
@@ -740,8 +817,14 @@
     rgb: (hex) => { const n = parseInt(hex.replace('#', ''), 16); return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`; },
   };
 
+  function resume() {
+    const cur = state.current; if (!cur || !cur.open) return false;
+    const c = courses.find((x) => x.id === cur.course); const l = c?.lessons.find((x) => x.id === cur.lesson);
+    if (!c || !l || state.done[key(c.id, l.id)]) return false;
+    open(c.id, l.id, { force: true }); return true;
+  }
   Q.learn = {
-    courses, H, renderXP,
+    courses, H, renderXP, resume,
     init(a) {
       app = a;
       renderXP();
@@ -754,11 +837,12 @@
     get active() { return !!S; },
     get state() { return state; },
   };
-  const persistCodeDebounced = debounce(persistCode, 800);
+  const persistCodeDebounced = debounce(() => { persistCode(); if (S && S.lesson.kind === 'capstone' && app.editor.has(tabId())) Q.replay?.record(key(S.course.id, S.lesson.id), app.editor.get(tabId())); }, 800);
 
   async function runLessonCode() {
     // free run (no check) — used after a step is solved or on read steps
     const code = app.editor.get(tabId()) || '';
+    if (S.course.lang === 'cpp' && Q.raylib?.isRaylib(code)) { inlineRaylib(code); return; }
     app.clearConsole(); app.showPanel('console');
     const onEvent = (d) => app.log(d.type === 'warn' ? 'warn' : d.type, d.text, { line: d.line, file: d.line ? tabId() : null, lang: S.course.lang });
     if (S.course.run === 'js') await Q.runner.runJS(code, { onEvent, timeout: 5000 });

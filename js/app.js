@@ -22,12 +22,18 @@
     try { await saver.save({ filename: name, data: blob }); toast(`Saved ${esc(name)}`, 'success', 2000); }
     catch (err) { if (err?.code === 'declined') return; if (err?.code === 'rate_limited') return toast('A save is already waiting for you to confirm.', 'info', 2500); toast('Downloads aren’t available here — use copy/paste instead.', 'warn', 3000); exportDialog(); }
   }
+  async function saveFile(name, blob) {
+    if (!EMBED) return download(name, blob);
+    if (!saver) return toast('Downloads aren’t available here.', 'warn', 2500);
+    try { await saver.save({ filename: name, data: blob }); toast(`Saved ${esc(name)}`, 'success', 2000); }
+    catch (err) { if (err?.code === 'declined') return; toast('Couldn’t save the file here.', 'warn', 2500); }
+  }
   async function saveBackupFile() {
     const name = `codeditor-backup-${new Date().toLocaleDateString('en-CA')}.json`;
     const blob = new Blob([fs.exportAll()], { type: 'application/json' });
-    if (!EMBED) return download(name, blob);
+    if (!EMBED) { store.set('lastBackupAt', Date.now()); return download(name, blob); }
     if (!saver) return exportDialog('all');
-    try { await saver.save({ filename: name, data: blob }); toast(`Saved ${esc(name)} — restore it with File → Restore from backup file`, 'success', 3500); }
+    try { await saver.save({ filename: name, data: blob }); store.set('lastBackupAt', Date.now()); toast(`Saved ${esc(name)} — restore it with File → Restore from backup file`, 'success', 3500); }
     catch (err) { if (err?.code === 'declined') return; toast('Downloads aren’t available here — copy the text instead.', 'warn', 3000); }
   }
   const saveSettings = () => store.set('settings', settings);
@@ -179,12 +185,12 @@
   /* ===================== Menus ===================== */
   function buildMenus() {
     const menus = {
-      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'project.zip', 'project.export', 'project.importText', '-', 'project.backup', 'project.backupFile', 'project.restore', 'project.restoreFile', 'learn.restoreProgress'],
+      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'sandbox.open', 'project.switch', 'project.rename', '-', 'file.save', 'assets.open', 'project.zip', 'project.shareLink', 'project.export', 'project.importText', '-', 'project.backup', 'project.backupFile', 'project.restore', 'project.restoreFile', 'learn.restoreProgress'],
       Edit: ['edit.undo', 'edit.redo', '-', 'edit.find', 'edit.replace', 'search.all', '-', 'edit.comment', 'edit.duplicate', 'edit.format', 'edit.gotoLine'],
       View: ['palette', 'quickOpen', '-', 'view.sidebar', 'view.panel', 'view.right', 'view.zen', '-', 'theme.pick', 'zoom.in', 'zoom.out', 'zoom.reset'],
       Run: ['run.run', 'run.stop', 'preview.refresh', ...(EMBED ? [] : ['preview.newTab']), '-', 'console.clear'],
       Learn: ['learn.open', 'learn.continue', 'learn.refresh', 'learn.stats', 'tutor.open', 'learn.badges'],
-      Help: ['help.keys', 'help.welcome', 'help.about'],
+      Help: ['help.keys', 'help.whatsnew', 'help.tour', 'help.welcome', 'help.about'],
     };
     const host = $('#menus');
     Object.entries(menus).forEach(([name, ids]) => {
@@ -236,6 +242,7 @@
 
   function openFile(path, { line, col } = {}) {
     if (!fs.exists(path)) return;
+    if (Q.assets?.isAsset(path) && Q.assets.isData(fs.read(path))) return Q.assets.viewer(path);
     if (!tabs().includes(path)) tabs().push(path);
     activate(path);
     if (line) setTimeout(() => editor.reveal(line, col || 1), 30);
@@ -292,6 +299,7 @@
       h('button', { class: 'icon-btn sm', title: 'New file', html: icon('filePlus', 15), onclick: () => exec('file.new') }),
       h('button', { class: 'icon-btn sm', title: 'New folder', html: icon('folderPlus', 15), onclick: () => exec('file.newFolder') }),
       h('button', { class: 'icon-btn sm', title: 'Import files from your computer', html: icon('upload', 15), onclick: () => exec('file.import') }),
+      h('button', { class: 'icon-btn sm', title: 'Asset pack — sprites & sounds', html: icon('palette', 15), onclick: () => exec('assets.open') }),
       h('button', { class: 'icon-btn sm', title: 'Export / share this project', html: icon('external', 15), onclick: () => exec('project.export') })));
     const nfiles = fs.list().length;
     const proj = h('button', { class: 'proj-switch', title: 'Switch project', onclick: () => exec('project.switch') }, h('span', { class: 'pic', html: icon('project', 15) }), h('span', { class: 'name', html: `${esc(fs.project.name)}<span class="sub">${nfiles} file${nfiles === 1 ? '' : 's'} · switch project</span>` }), h('span', { html: icon('chevron', 13), style: { color: 'var(--muted)' } }));
@@ -499,6 +507,7 @@
   function summary(text, cls) { const s = $('#psummary'); s.textContent = text; s.className = 'panel-summary' + (cls ? ' ' + cls : ''); }
   function clearConsole() { consoleEl().innerHTML = '<div class="console-empty">Output appears here. Press <kbd>Ctrl</kbd> <kbd>Enter</kbd> to run.</div>'; ccount = 0; lastLine = null; lastSummaryReal = false; setCount($('#ccount'), 0); summary('Console is empty · Ctrl+Enter runs your code'); }
   function log(type, text, { line, file, lang } = {}) {
+    if (type !== 'sys' && Q.ext?.isOn?.('consoleTime')) text = `[${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${text}`;
     const c = consoleEl();
     c.querySelector('.console-empty')?.remove();
     // collapse identical consecutive messages
@@ -634,7 +643,8 @@
       const t0 = performance.now();
       const res = await Q.runner.runJS(js, { onEvent: (d) => { if (d.type === 'clear') return clearConsole(); log(d.type, d.text, { line: d.line, file: d.line ? id : null, lang }); if (d.type === 'error') { lastRunErrors.push({ id, line: d.line, msg: d.text }); updateProblems(); } }, stdin: stdinLines() });
       setRunning(false);
-      if (!res.errors.length) log('sys', `Finished in ${Math.round(performance.now() - t0)} ms`);
+      if (!res.errors.length) { log('sys', `Finished in ${Math.round(performance.now() - t0)} ms`); Q.journal?.noteSuccess({ where: id, code }); }
+      else Q.journal?.noteError({ where: id, err: res.errors[0], code, lang, title: titleOf(id) });
       return;
     }
     if (lang === 'python') {
@@ -648,9 +658,11 @@
         if (d.type === 'error') { lastRunErrors.push({ id, line: d.line, msg: d.last || d.text }); editor.setMarkers(id, d.line ? [{ line: d.line, msg: d.last || d.text }] : []); updateProblems(); }
       } });
       setRunning(false);
-      if (!res.errors.length) { editor.setMarkers(id, []); log('sys', `Finished in ${Math.round(performance.now() - t0)} ms`); }
+      if (!res.errors.length) { editor.setMarkers(id, []); log('sys', `Finished in ${Math.round(performance.now() - t0)} ms`); Q.journal?.noteSuccess({ where: id, code }); }
+      else Q.journal?.noteError({ where: id, err: res.errors[0], code, lang: 'python', title: titleOf(id) });
       return;
     }
+    if ((lang === 'cpp' || lang === 'c') && Q.raylib?.isRaylib(code)) { clearConsole(); Q.raylib.preview(code); return; }
     const L = Q.langs.byId[lang];
     log('sys', `${L?.name || lang} can’t run inside a browser, but you still get highlighting, the Tutor and lessons. Open the Learn tab for a ${L?.name || ''} tour!`);
     showPanel('console');
@@ -666,7 +678,7 @@
     L.append(h('button', { class: 'sbi', id: 'sb-problems', title: 'Problems', onclick: () => showPanel('problems') }));
     L.append(h('button', { class: 'sbi', id: 'sb-py', title: 'Python runtime (click for a check-up)', html: '<i class="pydot"></i>Python', onclick: () => { showPanel('console'); Q.runner.pyDiag((t) => log('sys', t)); } }));
     L.append(h('span', { class: 'sbi', id: 'sb-engine', title: '' }));
-    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 11.1', style: { opacity: '.55' } }));
+    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 12', style: { opacity: '.55' } }));
     R.append(h('div', { id: 'sb-ext', style: { display: 'flex', height: '100%' } }));
     R.append(h('button', { class: 'sbi', id: 'sb-pos', title: 'Go to line (Ctrl+G)', onclick: () => exec('edit.gotoLine') }));
     R.append(h('button', { class: 'sbi', id: 'sb-tab', title: 'Indentation', onclick: () => exec('settings.tabSize') }));
@@ -773,6 +785,7 @@
     root.append(h('div', { class: 'w-actions' },
       act('play', 'New game', () => { fs.createProject('My Game', 'game'); }),
       act('filePlus', 'New file', () => exec('file.new')),
+      act('box', 'Sandbox', () => exec('sandbox.open')),
       act('project', 'Projects', () => exec('project.switch'))));
     const recent = fs.projects.slice(0, 3);
     if (recent.length) root.append(h('div', { class: 'w-recent' }, h('span', { class: 'w-label', text: 'Recent' }), ...recent.map((p) => h('button', { class: 'w-proj', text: p.name, onclick: () => (p.id === fs.project.id ? (p.tabs[0] ? openFile(p.tabs[0]) : (fs.list()[0] && openFile(fs.list()[0]))) : fs.switchProject(p.id)) }))));
@@ -826,7 +839,7 @@
     const packSel = h('select', { id: 'set-sound' }, ...[['retro', 'Retro 8-bit'], ['soft', 'Soft modern']].map(([v, l]) => h('option', { value: v, selected: v === (settings.soundPack || 'retro'), text: l })));
     packSel.onchange = () => { settings.soundPack = packSel.value; saveSettings(); Q.sound?.play('right'); };
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Sound' }), tog('sound', 'Sound effects'), h('div', { class: 'set' }, h('label', { for: 'set-sound', text: 'Sound style' }), packSel)));
-    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Workspace' }), tog('livePreview', 'Live preview while typing'), (() => { const r = tog('simpleEditor', 'Simple editor (faster on slow computers)'); r.querySelector('.switch').addEventListener('click', () => toast('Reload the page to switch editors.', 'info', 2500)); return r; })(), tog('tutorFollow', 'Tutor follows your cursor'), tog('confirmDelete', 'Confirm before deleting')));
+    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Workspace' }), h('div', { class: 'set' }, h('label', { text: 'Offline' }), h('span', { class: 'muted small', text: EMBED ? 'Not available inside claude.ai — use the GitHub Pages link' : store.get('offlineReady', false) ? '✓ Ready offline — Python and the editor are saved' : 'Saving for offline… (needs a minute online)' })), tog('livePreview', 'Live preview while typing'), (() => { const r = tog('simpleEditor', 'Simple editor (faster on slow computers)'); r.querySelector('.switch').addEventListener('click', () => toast('Reload the page to switch editors.', 'info', 2500)); return r; })(), tog('tutorFollow', 'Tutor follows your cursor'), tog('confirmDelete', 'Confirm before deleting')));
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Data' }),
       h('div', { class: 'set' }, h('button', { class: 'btn', html: `${icon('copy', 14)} Back up everything`, onclick: () => exec('project.backup') }), h('button', { class: 'btn', html: `${icon('download', 14)} Download backup file`, onclick: () => exec('project.backupFile') }), h('button', { class: 'btn', html: `${icon('upload', 14)} Restore`, onclick: () => exec('project.restore') }), h('button', { class: 'btn', html: `${icon('refresh', 14)} Restore lost progress`, onclick: () => exec('learn.restoreProgress') })),
       h('div', { class: 'set' }, h('button', { class: 'btn ghost', text: 'Reset settings to defaults', onclick: async () => { if (await confirm('Reset settings?', 'Your files and progress stay. Only settings change.', false)) { Object.assign(settings, DEFAULTS); applySettings(); setTheme(DEFAULTS.theme); renderSettings(); } } }))));
@@ -861,6 +874,10 @@
     let n = 0;
     for (const f of fileList) {
       if (f.size > 2_000_000) { toast(`${esc(f.name)} is too big (max 2 MB)`, 'error'); continue; }
+      if (/^(image|audio)\//.test(f.type) && !/svg/.test(f.type)) {
+        const d = await Q.assets.readUpload(f); if (!d) continue;
+        const path = (dir ? dir + '/' : 'assets/') + f.name; fs.write(path, d, true); n++; continue;
+      }
       const text = await f.text();
       if (/\u0000/.test(text.slice(0, 1000))) { toast(`${esc(f.name)} looks like a binary file — only text files are supported`, 'error'); continue; }
       const path = (dir ? dir + '/' : '') + (f.webkitRelativePath || f.name);
@@ -899,8 +916,9 @@
     const body = h('div', {}, h('p', { html: 'Copy this text and keep it somewhere safe — a Google Doc, a note, or an email to yourself. To bring it back, open Codeditor on any computer and choose <b>File → Import project from pasted text</b>.' }), segHost, ta, note);
     modal({ title: 'Export & share', body, wide: true, buttons: [
       ...(canZip() ? [{ label: 'Download file', onclick: () => { scope === 'all' ? saveBackupFile() : saveZip(); return false; } }] : []),
+      { label: 'Share link', onclick: () => { Q.share?.dialog(); } },
       { label: 'Close', value: null },
-      { label: 'Copy text', primary: true, onclick: () => { copyText(ta.value, scope === 'all' ? 'Backup copied' : 'Project copied'); Q.learn.badge('shipper'); } },
+      { label: 'Copy text', primary: true, onclick: () => { copyText(ta.value, scope === 'all' ? 'Backup copied' : 'Project copied'); if (scope === 'all') store.set('lastBackupAt', Date.now()); Q.learn.badge('shipper'); } },
     ] });
     requestAnimationFrame(() => update(scope));
   }
@@ -1004,7 +1022,11 @@
     cmd('project.importText', 'Import project from pasted text…', 'Project', () => importDialog());
     cmd('project.zip', 'Download project as .zip', 'Project', () => { if (!canZip()) return exportDialog(); saveZip(); });
     cmd('project.backup', 'Back up everything…', 'Project', () => exportDialog('all'));
+    cmd('sandbox.open', 'Open a sandbox…', 'Project', () => Q.sandbox?.pick());
+    cmd('assets.open', 'Asset pack (sprites & sounds)…', 'Project', () => Q.assets?.library());
+    cmd('project.shareLink', 'Share project as a link…', 'Project', () => Q.share?.dialog());
     cmd('project.backupFile', 'Download backup file (everything)', 'Project', () => (canZip() ? saveBackupFile() : exportDialog('all')));
+    cmd('learn.journal', 'Bug journal', 'Learn', () => Q.journal?.show());
     cmd('learn.restoreProgress', 'Restore lost progress…', 'Learn', () => Q.progress?.restorePicker());
     cmd('project.restore', 'Restore from backup…', 'Project', () => importDialog('all'));
     cmd('project.restoreFile', 'Restore from backup file…', 'Project', async () => {
@@ -1072,6 +1094,8 @@
       const extra = [['Multi-cursor (click)', 'Alt+Click'], ['Rename symbol', 'F2'], ['Trigger suggestions', 'Ctrl+Space'], ['Expand Emmet (HTML)', 'Tab'], ['Next / previous tab', 'Ctrl+Tab']].map(([a, b]) => `<tr><td>${a}</td><td>${b.split('+').map((k) => `<kbd>${k}</kbd>`).join(' ')}</td></tr>`).join('');
       modal({ title: 'Keyboard shortcuts', wide: true, body: `<table class="keys-table">${rows}${extra}</table>` });
     }, 'Ctrl+K Ctrl+S');
+    cmd('help.tour', 'Take the quick tour', 'Help', () => Q.tour?.start());
+    cmd('help.whatsnew', 'What’s new', 'Help', () => Q.notices?.whatsNew(true));
     cmd('help.welcome', 'Show welcome screen', 'Help', () => { editor.showNothing(); renderTabs(); });
     cmd('help.about', 'About Codeditor', 'Help', () => modal({ title: 'About Codeditor', body: `<p><b>Codeditor</b> — a learn-as-you-code editor.</p><p>Editor engine: ${editor.kind === 'monaco' ? 'Monaco (the editor inside VS Code)' : 'Codeditor built-in (offline mode)'}<br>Python: Pyodide (CPython compiled to WebAssembly)<br>Languages highlighted: ${Q.langs.list.length} · Courses: ${Q.learn.courses.length}</p><p>Your files, progress and settings are stored only in this browser.</p>` }));
   }
@@ -1088,7 +1112,7 @@
   /* phone: tapping outside the sliding sidebar closes it */
   const phone = matchMedia('(max-width: 680px)');
   ['center', 'right'].forEach((id) => $('#' + id)?.addEventListener('pointerdown', () => { if (phone.matches && !settings.hideSidebar) exec('view.sidebar'); }));
-  if (phone.matches && !settings.hideSidebar) { settings.hideSidebar = true; app.classList.add('no-sidebar'); }
+
   initDrop();
   addEventListener('keydown', onKey, true);
   app.classList.remove('loading');
@@ -1105,23 +1129,44 @@
   editor.onCursor((info) => { lastCursor = info; updateStatus(info); if (settings.tutorFollow) Q.tutor.onCursor(info); Q.ext.onCursor(info); });
   editor.onMarkers(debounce(() => updateProblems(), 250));
 
-  Q.app = { commands, focusLearn, reapply: () => editor.applySettings(editorOpts()), settings, editor, exec, openFile, openVirtual, closeVirtual, activate, showRight, showPanel, showView, log, clearConsole, refreshPreview, isVirtual, langOfId, renderTabs, setRunning, updateProblems, cmd, get virtuals() { return virtuals; } };
+  Q.app = { pickFiles, copyText, saveFile, commands, focusLearn, reapply: () => editor.applySettings(editorOpts()), settings, editor, exec, openFile, openVirtual, closeVirtual, activate, showRight, showPanel, showView, log, clearConsole, refreshPreview, isVirtual, langOfId, renderTabs, setRunning, updateProblems, cmd, get virtuals() { return virtuals; } };
 
+  // another open copy saved newer files: show them in our open editors too
+  bus.on('projects:changed', () => {
+    for (const path of fs.list()) { if (editor.has(path) && !isVirtual(path)) { const v = fs.read(path); if (typeof v === 'string' && editor.get(path) !== v) editor.set(path, v); } }
+    renderExplorer();
+  });
   Q.ext.init(Q.app);
   Q.tutor.init($('#tutor'));
   Q.learn.init(Q.app);
   Q.progress?.boot();
+  Q.share?.maybeOpen();
+  if (!/^#share=/.test(location.hash)) setTimeout(() => Q.learn.resume?.(), 300);
   editor.applySettings(editorOpts());
 
   renderExplorer();
   loadProject();
   showView(settings.view);
   showRight(settings.rview === 'lesson' && !Q.learn.active ? 'preview' : settings.rview);
+  // phones: start with the sliding sidebar closed so it doesn't cover the editor/lesson
+  if (matchMedia('(max-width: 680px)').matches) { settings.hideSidebar = true; app.classList.add('no-sidebar'); }
   updateProblems();
 
   store.set('welcomed', true);
   if (editor.kind === 'fallback' && editor.reason === 'offline') setTimeout(() => toast('You’re offline, so Codeditor is using its built-in editor.', 'info', 4000), 900);
   syncLayoutBtns();
 
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').then(() => {
+      // offline: once the app has settled, quietly fetch Python and the editor so they work with no internet next time
+      if (store.get('offlineReady', false)) return;
+      setTimeout(async () => {
+        if (!navigator.serviceWorker.controller || navigator.connection?.saveData) return;
+        const PY = ['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.wasm', 'pyodide-lock.json'].map((f) => 'py/' + f);
+        const VS = ['loader.js', 'editor/editor.main.js', 'editor/editor.main.css', 'editor/editor.main.nls.js', 'base/worker/workerMain.js', 'base/common/worker/simpleWorker.nls.js', 'language/typescript/tsMode.js', 'language/typescript/tsWorker.js', 'language/css/cssMode.js', 'language/css/cssWorker.js', 'language/html/htmlMode.js', 'language/html/htmlWorker.js', 'language/json/jsonMode.js', 'language/json/jsonWorker.js',
+          ...['javascript', 'typescript', 'python', 'html', 'css', 'scss', 'lua', 'cpp', 'csharp', 'java', 'kotlin', 'swift', 'go', 'rust', 'php', 'ruby', 'sql', 'markdown', 'yaml', 'xml', 'shell'].map((l) => `basic-languages/${l}/${l}.js`)].map((f) => 'vendor/monaco/vs/' + f);
+        try { for (const u of [...PY, ...VS]) await fetch(u); store.set('offlineReady', true); } catch {}
+      }, 20000);
+    }).catch(() => {});
+  }
 })();

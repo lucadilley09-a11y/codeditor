@@ -32,6 +32,18 @@
     });
   }
 
+  /* end-of-line labels (error lens, hints): a generated CSS ::after rule per message — works in every Monaco version */
+  const afterRules = new Map(); let afterSheet = null;
+  function afterClass(text, cls) {
+    const key = (cls || '') + '\u0000' + text;
+    let name = afterRules.get(key);
+    if (name) return name + (cls ? ' ' + cls : '');
+    name = 'eol-' + afterRules.size.toString(36);
+    afterRules.set(key, name);
+    if (!afterSheet) { afterSheet = document.createElement('style'); afterSheet.id = 'eol-labels'; document.head.append(afterSheet); }
+    try { afterSheet.sheet.insertRule(`.monaco-editor .${name}::after { content: ${JSON.stringify(text)}; white-space: pre; pointer-events: none; }`, afterSheet.sheet.cssRules.length); } catch {}
+    return name + (cls ? ' ' + cls : '');
+  }
   function makeMonaco(monaco, host, settings) {
     const models = new Map(); // id -> model
     const views = new Map();  // id -> viewState
@@ -198,7 +210,7 @@
         decos.set(k, m.deltaDecorations(decos.get(k) || [], list.filter((d) => d.line <= n).map((d) => {
           const lineLen = m.getLineMaxColumn(d.line);
           const range = d.after ? new monaco.Range(d.line, lineLen, d.line, lineLen) : new monaco.Range(d.line, d.start || 1, d.line, d.end || lineLen);
-          return { range, options: d.after ? { after: { content: d.after, inlineClassName: d.className } } : { inlineClassName: d.className, isWholeLine: !!d.whole } };
+          return { range, options: d.after ? { afterContentClassName: afterClass(d.after, d.className) } : { inlineClassName: d.className, isWholeLine: !!d.whole } };
         })));
       },
       cursorCoords() {

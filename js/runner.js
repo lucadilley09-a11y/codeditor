@@ -54,9 +54,12 @@
       js = js.replace(/<\/script/gi, '<\\/script');
       return `<script${a}${b} data-file="${p}">\n${js}\n<\/script>`;
     });
-    if (hook) {
-      if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, (m) => m + HOOK);
-      else html = HOOK + html;
+    const A = Q.assets ? Q.assets.previewScript(entry, readFile) : { map: {}, script: '' };
+    if (A.script) html = Q.assets.rewriteHTML(html, entry, A.map);
+    const head = (hook ? HOOK + (Q.ext && Q.ext.previewHead ? Q.ext.previewHead() : '') : '') + A.script;
+    if (head) {
+      if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, (m) => m + head);
+      else html = head + html;
     }
     return html;
   }

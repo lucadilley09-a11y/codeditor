@@ -5,7 +5,7 @@
    4. adds optional timed challenges every ~8 lessons and right after each unit project */
 (() => {
   const { G, hash, levels, packs } = Q.gen;
-  const TARGET = { js: 80, py: 80, cs: 80, lua: 80, cpp: 80, game: 40, dom: 24 };
+  const TARGET = { js: 80, py: 80, cs: 80, lua: 80, cpp: 80, game: 40, dom: 24, html: 40, css: 40 };
   const VARIANTS = [['Practice', null], ['Drill', 'write'], ['Bug hunt', 'fix'], ['Predict it', 'predict'], ['Fill the gaps', 'fill'], ['Mixed review', null], ['Remix', null]];
   const short = (t) => t.replace(/^(Project|Unit project|Capstone|Final project):\s*/i, '');
   const skillsOf = (tpls) => [...new Set(tpls.map((t) => t.skill))];
@@ -132,7 +132,7 @@
   }
 
   // existing end-of-course projects are unit projects
-  const KINDS = { py: { rpg: 'project' }, game: { final: 'project' }, dom: { clicker: 'project' } };
+  const KINDS = { py: { rpg: 'project' }, game: { final: 'project' }, dom: { clicker: 'project' }, html: { project: 'project' }, css: { project: 'project' } };
   Q.gen.build = () => (Q.courses || []).forEach((c) => { Object.entries(KINDS[c.id] || {}).forEach(([id, k]) => { const l = c.lessons.find((x) => x.id === id); if (l && !l.kind) l.kind = k; }); buildCourse(c); });
   Q.gen.TARGET = TARGET;
   Q.gen.build(); // build.js loads after every course file and generator pack

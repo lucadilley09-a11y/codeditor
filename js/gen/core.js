@@ -62,7 +62,7 @@
     let o;
     try { o = tpl.make(g); } catch (err) { console.warn('generator failed', courseId, tpl.id, err); return null; }
     const tag = `${tpl.skill} · ${KIND[tpl.kind]}`;
-    const base = { tpl: tpl.id, tag, generated: true, seed };
+    const base = { tpl: tpl.id, gkind: tpl.kind, tag, generated: true, seed };
     if (tpl.kind === 'predict') return { type: 'predict', code: o.code, q: o.q, explain: o.explain, ...options(g, o.answer, o.wrong), ...base };
     if (tpl.kind === 'quiz') return { type: 'quiz', q: o.q, explain: o.explain, mono: !!o.mono, ...options(g, o.answer, o.wrong), ...base };
     const task = (tpl.kind === 'fix' ? '<b>Fix the bug.</b> ' : tpl.kind === 'fill' ? '<b>Fill in the blank</b> — replace <code>____</code>. ' : '') + o.task;
