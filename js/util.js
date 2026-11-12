@@ -97,9 +97,9 @@ Q.APP = 'Codeditor'; // the app's name — change it here
   }
 
   /* ---------- Modal / prompt / confirm ---------- */
-  function modal({ title, body, buttons = [], wide = false, onClose }) {
+  function modal({ title, body, buttons = [], wide = false, onClose, cls = '' }) {
     const back = h('div', { class: 'modal-back' });
-    const box = h('div', { class: 'modal' + (wide ? ' wide' : '') });
+    const box = h('div', { class: 'modal' + (wide ? ' wide' : '') + (cls ? ' ' + cls : '') });
     const close = (val) => { back.classList.remove('in'); setTimeout(() => back.remove(), 160); onClose && onClose(val); };
     box.append(h('div', { class: 'modal-head' }, h('h3', { text: title }), h('button', { class: 'icon-btn', html: icon('close', 16), title: 'Close', onclick: () => close(null) })));
     const bodyEl = h('div', { class: 'modal-body' });

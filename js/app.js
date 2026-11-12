@@ -5,10 +5,23 @@
   const app = document.getElementById('app');
 
   /* ===================== Settings ===================== */
-  const DEFAULTS = { theme: 'quill-night', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, codeFont: 'JetBrains Mono', sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: true, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
+  const DEFAULTS = { theme: 'quill-night', sound: true, soundPack: 'retro', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, codeFont: 'JetBrains Mono', sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: true, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   settings.theme = Q.themes.get(settings.theme).id;
   const EMBED = (() => { try { return window.top !== window; } catch { return true; } })();
+  // on the web link, saving files goes through the page's downloads capability (the viewer confirms each save)
+  let saver = null;
+  if (EMBED && window.claude?.use) window.claude.use('downloads').then((d) => { saver = d; }).catch(() => {});
+  const canZip = () => !EMBED || !!saver;
+  async function saveZip() {
+    const name = fs.project.name.replace(/[^\w-]+/g, '-') + '.zip';
+    const blob = Q.zip(fs.project.files);
+    Q.learn.badge('shipper');
+    if (!EMBED) return download(name, blob);
+    if (!saver) return exportDialog();
+    try { await saver.save({ filename: name, data: blob }); toast(`Saved ${esc(name)}`, 'success', 2000); }
+    catch (err) { if (err?.code === 'declined') return; if (err?.code === 'rate_limited') return toast('A save is already waiting for you to confirm.', 'info', 2500); toast('Downloads aren’t available here — use copy/paste instead.', 'warn', 3000); exportDialog(); }
+  }
   const saveSettings = () => store.set('settings', settings);
   const editorOpts = () => ({ ...settings, ...Q.ext.editorFlags() });
 
@@ -154,11 +167,11 @@
   /* ===================== Menus ===================== */
   function buildMenus() {
     const menus = {
-      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'project.export', 'project.importText', '-', 'project.backup', 'project.restore'],
+      File: ['file.new', 'file.newFolder', 'file.import', '-', 'project.new', 'project.switch', 'project.rename', '-', 'file.save', 'project.zip', 'project.export', 'project.importText', '-', 'project.backup', 'project.restore'],
       Edit: ['edit.undo', 'edit.redo', '-', 'edit.find', 'edit.replace', 'search.all', '-', 'edit.comment', 'edit.duplicate', 'edit.format', 'edit.gotoLine'],
       View: ['palette', 'quickOpen', '-', 'view.sidebar', 'view.panel', 'view.right', 'view.zen', '-', 'theme.pick', 'zoom.in', 'zoom.out', 'zoom.reset'],
       Run: ['run.run', 'run.stop', 'preview.refresh', ...(EMBED ? [] : ['preview.newTab']), '-', 'console.clear'],
-      Learn: ['learn.open', 'learn.continue', 'tutor.open', 'learn.badges'],
+      Learn: ['learn.open', 'learn.continue', 'learn.refresh', 'learn.stats', 'tutor.open', 'learn.badges'],
       Help: ['help.keys', 'help.welcome', 'help.about'],
     };
     const host = $('#menus');
@@ -738,6 +751,7 @@
         h('div', { style: { minWidth: 0 } }, h('div', { class: 'big', text: 'Learn to make games' }), h('div', { class: 'meta', text: `Pick a language to start · ${Q.langInfo.list.length} to choose from` })),
         h('span', { class: 'go btn primary', html: `Choose ${icon('arrowRight', 14)}` })));
     }
+    if ((st.lang || st.xp) && Q.progress) root.append(Q.progress.homeCard());
     const act = (ic, title, fn) => h('button', { class: 'w-act', onclick: fn, html: `${icon(ic, 16)}<b>${title}</b>` });
     root.append(h('div', { class: 'w-actions' },
       act('play', 'New game', () => { fs.createProject('My Game', 'game'); }),
@@ -780,8 +794,10 @@
     v.append(h('div', { class: 'view-head' }, h('span', { text: 'Settings' })), body);
     const grid = h('div', { class: 'theme-grid' });
     Q.themes.list.forEach((t) => {
-      const b = h('button', { class: 'theme-sw' + (t.id === settings.theme ? ' on' : ''), title: t.name }, h('div', { class: 'pv', style: { background: t.ui.bg }, html: `<i style="width:70%;background:${t.syn.keyword}"></i><i style="width:45%;background:${t.syn.string}"></i><i style="width:58%;background:${t.syn.func}"></i>` }), h('div', { class: 'tn', text: t.name }));
-      b.onclick = () => { setTheme(t.id); $$('.theme-sw', grid).forEach((x) => x.classList.toggle('on', x === b)); };
+      const open = Q.themes.isUnlocked(t.id);
+      const need = !open && Q.ranks ? Q.ranks.list[t.rank].name : '';
+      const b = h('button', { class: 'theme-sw' + (t.id === settings.theme ? ' on' : '') + (open ? '' : ' locked'), title: open ? t.name : `${t.name} — unlocks at ${need}` }, h('div', { class: 'pv', style: { background: t.ui.bg }, html: `<i style="width:70%;background:${t.syn.keyword}"></i><i style="width:45%;background:${t.syn.string}"></i><i style="width:58%;background:${t.syn.func}"></i>${open ? '' : `<span class="lockpill">${icon('lock', 10)} ${esc(need)}</span>`}` }), h('div', { class: 'tn', text: t.name }));
+      b.onclick = () => { if (!open) return toast(`<b>${esc(t.name)}</b> unlocks at rank <b>${esc(need)}</b>.`, 'info', 2200); setTheme(t.id); $$('.theme-sw', grid).forEach((x) => x.classList.toggle('on', x === b)); };
       grid.append(b);
     });
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Theme' }), grid));
@@ -790,13 +806,16 @@
     const fontSel = h('select', { id: 'set-font' }, ...FONTS.map((f) => h('option', { value: f, selected: f === settings.codeFont, text: f })));
     fontSel.onchange = () => { settings.codeFont = fontSel.value; applyFont(); applySettings(); if (document.fonts) document.fonts.load(`14px '${settings.codeFont}'`).then(() => applySettings()); };
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Editor' }), h('div', { class: 'set' }, h('label', { for: 'set-font', text: 'Code font' }), fontSel), num('fontSize', 'Font size', 9, 32), num('tabSize', 'Tab size', 1, 8), tog('wordWrap', 'Word wrap'), tog('lineNumbers', 'Line numbers'), tog('ligatures', 'Font ligatures (=> ≠)'), tog('autoClose', 'Auto-close brackets & quotes'), tog('autocomplete', 'Autocomplete suggestions'), tog('hover', 'Hover info')));
+    const packSel = h('select', { id: 'set-sound' }, ...[['retro', 'Retro 8-bit'], ['soft', 'Soft modern']].map(([v, l]) => h('option', { value: v, selected: v === (settings.soundPack || 'retro'), text: l })));
+    packSel.onchange = () => { settings.soundPack = packSel.value; saveSettings(); Q.sound?.play('right'); };
+    body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Sound' }), tog('sound', 'Sound effects'), h('div', { class: 'set' }, h('label', { for: 'set-sound', text: 'Sound style' }), packSel)));
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Workspace' }), tog('livePreview', 'Live preview while typing'), tog('tutorFollow', 'Tutor follows your cursor'), tog('confirmDelete', 'Confirm before deleting')));
     body.append(h('div', { class: 'set-group' }, h('h5', { text: 'Data' }),
       h('div', { class: 'set' }, h('button', { class: 'btn', html: `${icon('copy', 14)} Back up everything`, onclick: () => exec('project.backup') }), h('button', { class: 'btn', html: `${icon('upload', 14)} Restore`, onclick: () => exec('project.restore') })),
       h('div', { class: 'set' }, h('button', { class: 'btn ghost', text: 'Reset settings to defaults', onclick: async () => { if (await confirm('Reset settings?', 'Your files and progress stay. Only settings change.', false)) { Object.assign(settings, DEFAULTS); applySettings(); setTheme(DEFAULTS.theme); renderSettings(); } } }))));
   }
   function applySettings() { saveSettings(); editor.applySettings(editorOpts()); updateStatus(); }
-  function setTheme(id) { if (id !== settings.theme) Q.learn?.badge('stylist'); settings.theme = id; saveSettings(); const t = Q.themes.get(id); Q.themes.applyCss(t); editor.setTheme(id); toast(`Theme: ${t.name}`, 'info', 1200); }
+  function setTheme(id) { if (id !== settings.theme && !Q.themes.isUnlocked(id)) { const t = Q.themes.get(id); return toast(`<b>${esc(t.name)}</b> unlocks at rank <b>${esc(Q.ranks.list[t.rank].name)}</b>.`, 'info', 2200); } if (id !== settings.theme) Q.learn?.badge('stylist'); settings.theme = id; saveSettings(); const t = Q.themes.get(id); Q.themes.applyCss(t); editor.setTheme(id); toast(`Theme: ${t.name}`, 'info', 1200); }
 
   /* ===================== Resizers ===================== */
   function initResizers() {
@@ -862,7 +881,7 @@
     const sg = seg(segHost, [['project', 'This project'], ['all', 'Everything (backup)']], update);
     const body = h('div', {}, h('p', { html: 'Copy this text and keep it somewhere safe — a Google Doc, a note, or an email to yourself. To bring it back, open Codeditor on any computer and choose <b>File → Import project from pasted text</b>.' }), segHost, ta, note);
     modal({ title: 'Export & share', body, wide: true, buttons: [
-      ...(EMBED ? [] : [{ label: 'Download .zip', onclick: () => { download(fs.project.name.replace(/[^\w-]+/g, '-') + '.zip', Q.zip(fs.project.files)); return false; } }]),
+      ...(canZip() ? [{ label: 'Download .zip', onclick: () => { saveZip(); return false; } }] : []),
       { label: 'Close', value: null },
       { label: 'Copy text', primary: true, onclick: () => { copyText(ta.value, scope === 'all' ? 'Backup copied' : 'Project copied'); Q.learn.badge('shipper'); } },
     ] });
@@ -966,7 +985,7 @@
     cmd('project.rename', 'Rename project…', 'Project', async () => { const n = await prompt('Rename project', fs.project.name); if (n) { fs.renameProject(fs.project.id, n); buildStatus(); } });
     cmd('project.export', 'Export / share project…', 'Project', () => exportDialog());
     cmd('project.importText', 'Import project from pasted text…', 'Project', () => importDialog());
-    cmd('project.zip', 'Download project as .zip', 'Project', () => { if (EMBED) return exportDialog(); download(fs.project.name.replace(/[^\w-]+/g, '-') + '.zip', Q.zip(fs.project.files)); Q.learn.badge('shipper'); });
+    cmd('project.zip', 'Download project as .zip', 'Project', () => { if (!canZip()) return exportDialog(); saveZip(); });
     cmd('project.backup', 'Back up everything…', 'Project', () => exportDialog('all'));
     cmd('project.restore', 'Restore from backup…', 'Project', () => importDialog('all'));
     cmd('project.restoreFile', 'Restore from backup file…', 'Project', async () => {
@@ -1007,7 +1026,7 @@
     bus.on('zoom', (d) => exec(d > 0 ? 'zoom.in' : 'zoom.out'));
     cmd('theme.pick', 'Change color theme…', 'View', () => {
       const b = $('#sb-theme').getBoundingClientRect();
-      contextMenu(b.left - 150, b.top - 8 - Q.themes.list.length * 30, Q.themes.list.map((t) => ({ label: (t.id === settings.theme ? '✓ ' : '   ') + t.name, action: () => setTheme(t.id) })));
+      contextMenu(b.left - 150, b.top - 8 - Q.themes.list.length * 30, Q.themes.list.map((t) => ({ label: (t.id === settings.theme ? '✓ ' : '   ') + t.name + (Q.themes.isUnlocked(t.id) ? '' : ' 🔒'), action: () => setTheme(t.id) })));
     }, 'Ctrl+K Ctrl+T');
     Q.themes.list.forEach((t) => cmd('theme.' + t.id, t.name, 'Theme', () => setTheme(t.id)));
     cmd('lang.pick', 'Change language mode…', 'Edit', () => {
@@ -1024,6 +1043,8 @@
     cmd('preview.newTab', 'Open preview in new tab', 'Run', () => { const entry = pickEntry(); if (!entry) return toast('No HTML page to open.', 'info'); const read = (p) => (editor.has(p) ? editor.get(p) : fs.read(p)); const url = URL.createObjectURL(new Blob([Q.runner.buildPage(entry, read, { hook: false })], { type: 'text/html' })); window.open(url, '_blank'); });
     cmd('console.clear', 'Clear console', 'Run', clearConsole, 'Ctrl+Shift+L');
     cmd('learn.open', 'Open courses', 'Learn', () => showView('learn'));
+    cmd('learn.refresh', 'Quick refresher', 'Learn', () => Q.refresher.show({ manual: true }));
+    cmd('learn.stats', 'Your stats', 'Learn', () => Q.progress.showStats());
     cmd('learn.continue', 'Continue next lesson', 'Learn', () => { const n = Q.learn.nextLesson(); if (n) Q.learn.open(n.course.id, n.lesson.id); else toast('You finished every lesson! 🏆', 'success'); });
     cmd('learn.badges', 'Badges & progress', 'Learn', () => Q.learn.showBadges());
     cmd('tutor.open', 'Open live Tutor', 'Learn', () => showRight('tutor'));
@@ -1066,6 +1087,7 @@
   Q.ext.init(Q.app);
   Q.tutor.init($('#tutor'));
   Q.learn.init(Q.app);
+  Q.progress?.boot();
   editor.applySettings(editorOpts());
 
   renderExplorer();

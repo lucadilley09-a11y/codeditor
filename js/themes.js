@@ -36,6 +36,52 @@
       ui: { shell: '#000000', bg: '#050505', bg2: '#0d0d0d', bg3: '#171717', bg4: '#242424', border: '#5a5a5a', text: '#ffffff', text2: '#e5e5e5', muted: '#b0b0b0', accent: '#ffd400', onAccent: '#000000', accent2: '#00e5ff', good: '#00ff7f', warn: '#ff9f1a', bad: '#ff4d4d', sel: '#ffd40055', line: '#ffffff12' },
       syn: { keyword: '#ff9dfc', string: '#9dff9d', number: '#ffb86b', comment: '#a8a8a8', func: '#7fd4ff', type: '#ffe36b', variable: '#ffffff', tag: '#ff8f8f', attr: '#ffe36b', operator: '#00e5ff', constant: '#ffb86b', prop: '#7fd4ff' },
     },
+    /* ---- unlockable themes (rank = rank index needed, see progress.js) ---- */
+    { id: 'ocean', name: 'Ocean', dark: true, rank: 1,
+      ui: { shell: '#04131a', bg: '#071c25', bg2: '#0a2430', bg3: '#0e2e3c', bg4: '#14394a', border: '#123442', text: '#d8f3f7', text2: '#9cc7cf', muted: '#5b8a94', accent: '#2dd4bf', onAccent: '#022722', accent2: '#60a5fa', good: '#4ade80', warn: '#fbbf24', bad: '#fb7185', sel: '#2dd4bf33', line: '#ffffff07' },
+      syn: { keyword: '#5eead4', string: '#a7f3d0', number: '#fdba74', comment: '#4b7580', func: '#93c5fd', type: '#fde68a', variable: '#d8f3f7', tag: '#5eead4', attr: '#93c5fd', operator: '#99f6e4', constant: '#fdba74', prop: '#93c5fd' } },
+    { id: 'terminal', name: 'Retro Terminal', dark: true, rank: 3, mono: true,
+      ui: { shell: '#000000', bg: '#030803', bg2: '#061006', bg3: '#0a180a', bg4: '#102410', border: '#123312', text: '#4ade80', text2: '#22c55e', muted: '#15803d', accent: '#4ade80', onAccent: '#021a07', accent2: '#a3e635', good: '#86efac', warn: '#facc15', bad: '#f87171', sel: '#4ade8033', line: '#4ade800a' },
+      syn: { keyword: '#bbf7d0', string: '#86efac', number: '#a3e635', comment: '#166534', func: '#4ade80', type: '#d9f99d', variable: '#4ade80', tag: '#bbf7d0', attr: '#a3e635', operator: '#22c55e', constant: '#a3e635', prop: '#86efac' },
+      css: 'body{font-family:var(--mono)!important}#app::after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#00000022 0 1px,transparent 1px 3px);z-index:9999}' },
+    { id: 'sakura', name: 'Sakura', dark: false, rank: 4,
+      ui: { shell: '#f6e9ee', bg: '#fffafc', bg2: '#fdf2f6', bg3: '#f9e6ee', bg4: '#f2d5e1', border: '#efd6e1', text: '#3d2430', text2: '#71495b', muted: '#a8869a', accent: '#e05a8b', onAccent: '#ffffff', accent2: '#7c3aed', good: '#15803d', warn: '#c2410c', bad: '#be123c', sel: '#e05a8b2e', line: '#00000005' },
+      syn: { keyword: '#c026d3', string: '#15803d', number: '#c2410c', comment: '#b49aa8', func: '#db2777', type: '#a16207', variable: '#3d2430', tag: '#be123c', attr: '#a16207', operator: '#7c3aed', constant: '#c2410c', prop: '#db2777' } },
+    { id: 'pastel', name: 'Pastel', dark: false, rank: 6,
+      ui: { shell: '#eef0fb', bg: '#fbfbff', bg2: '#f4f5fd', bg3: '#eceefb', bg4: '#e0e3f7', border: '#e2e5f6', text: '#2e3150', text2: '#5b5f86', muted: '#9a9dbd', accent: '#8b7cf6', onAccent: '#ffffff', accent2: '#f59eb5', good: '#34a77b', warn: '#e39a4c', bad: '#e5677d', sel: '#8b7cf62e', line: '#00000005' },
+      syn: { keyword: '#8b7cf6', string: '#3fa77d', number: '#e3894c', comment: '#b2b5d0', func: '#5b8def', type: '#d39b2f', variable: '#2e3150', tag: '#e5677d', attr: '#d39b2f', operator: '#5bb3c9', constant: '#e3894c', prop: '#5b8def' } },
+    { id: 'synthwave', name: 'Synthwave', dark: true, rank: 9,
+      ui: { shell: '#120a24', bg: '#1a1033', bg2: '#21143f', bg3: '#2a1a4d', bg4: '#36215f', border: '#35205c', text: '#f5e8ff', text2: '#c9b2e8', muted: '#8a6fb5', accent: '#ff4fd8', onAccent: '#24001c', accent2: '#36f9f6', good: '#72f1b8', warn: '#fede5d', bad: '#fe4450', sel: '#ff4fd833', line: '#ffffff08' },
+      syn: { keyword: '#fede5d', string: '#ff8b39', number: '#f97e72', comment: '#7a5ea8', func: '#36f9f6', type: '#fe4450', variable: '#f5e8ff', tag: '#72f1b8', attr: '#fede5d', operator: '#ff4fd8', constant: '#f97e72', prop: '#36f9f6' },
+      css: '.btn.primary,#runbtn{box-shadow:0 0 14px #ff4fd866}.ltitle,.w-hero h1{text-shadow:0 0 18px #ff4fd855}' },
+    { id: 'aero', name: 'Frutiger Aero', dark: false, rank: 12,
+      ui: { shell: '#bfe4f7', bg: '#f4fbff', bg2: '#e8f6fd', bg3: '#d9eff9', bg4: '#c6e6f5', border: '#b8dcee', text: '#0d3550', text2: '#2f5d7a', muted: '#6d93ab', accent: '#22a7f0', onAccent: '#ffffff', accent2: '#5ec43a', good: '#3aa635', warn: '#e08a1e', bad: '#d93a3a', sel: '#22a7f033', line: '#00000005' },
+      syn: { keyword: '#0b74c4', string: '#3a9a1f', number: '#d4760f', comment: '#8bb0c4', func: '#1592d6', type: '#b0791a', variable: '#0d3550', tag: '#d93a3a', attr: '#b0791a', operator: '#14a3a3', constant: '#d4760f', prop: '#1592d6' },
+      css: 'body{background:linear-gradient(180deg,#8fd3f4 0%,#d7f1fb 55%,#b6e59e 100%)!important}#app{background:transparent!important}.sheet,#sidebar,.titlebar,#statusbar,.modal{background:linear-gradient(180deg,#ffffffd9,#eaf7fdcc)!important;backdrop-filter:blur(14px);box-shadow:inset 0 1px 0 #fff,0 6px 24px #0b5c8a22}.btn.primary{background:linear-gradient(180deg,#7fd3ff,#1d9be0 52%,#1488cc)!important;border:1px solid #0f77b5!important;box-shadow:inset 0 1px 0 #ffffffb0;border-radius:99px!important}' },
+    { id: 'metro', name: 'Frutiger Metro', dark: true, rank: 15,
+      ui: { shell: '#0f0f12', bg: '#17171b', bg2: '#1d1d22', bg3: '#26262c', bg4: '#303038', border: '#2c2c33', text: '#ffffff', text2: '#c8c8d0', muted: '#85858f', accent: '#00a4ef', onAccent: '#ffffff', accent2: '#7fba00', good: '#7fba00', warn: '#ffb900', bad: '#f25022', sel: '#00a4ef33', line: '#ffffff06' },
+      syn: { keyword: '#00a4ef', string: '#7fba00', number: '#ffb900', comment: '#6a6a74', func: '#f25022', type: '#ffb900', variable: '#ffffff', tag: '#00a4ef', attr: '#7fba00', operator: '#c8c8d0', constant: '#ffb900', prop: '#00a4ef' },
+      css: '.sheet,.modal,.btn,.qopt,.lsn,.unit-head,.course,.tab,.cmdbox,.feedback,.task{border-radius:0!important}.btn.primary{font-weight:600;letter-spacing:.3px}' },
+    { id: 'eco', name: 'Frutiger Eco', dark: false, rank: 18,
+      ui: { shell: '#d7ecc9', bg: '#f8fdf3', bg2: '#eef8e5', bg3: '#e2f2d4', bg4: '#d2e9c0', border: '#cbe3b6', text: '#1f3a1a', text2: '#46663b', muted: '#7f9b72', accent: '#4caf50', onAccent: '#ffffff', accent2: '#2196f3', good: '#2e7d32', warn: '#e09422', bad: '#d84343', sel: '#4caf5033', line: '#00000005' },
+      syn: { keyword: '#2e7d32', string: '#558b2f', number: '#d67a12', comment: '#9bb38d', func: '#1976d2', type: '#9a7b12', variable: '#1f3a1a', tag: '#d84343', attr: '#9a7b12', operator: '#00897b', constant: '#d67a12', prop: '#1976d2' },
+      css: 'body{background:radial-gradient(120% 80% at 50% 0%,#e9f7dc,#bfe0a5)!important}#app{background:transparent!important}.sheet,#sidebar,.titlebar,#statusbar,.modal{background:linear-gradient(180deg,#ffffffd6,#f1faeacc)!important;backdrop-filter:blur(12px)}.btn.primary{background:linear-gradient(180deg,#8bd36b,#43a047)!important;border-radius:99px!important;box-shadow:inset 0 1px 0 #ffffffa0}' },
+    { id: 'luxury', name: 'Gold Luxury', dark: true, rank: 21,
+      ui: { shell: '#0b0906', bg: '#12100c', bg2: '#181510', bg3: '#211c15', bg4: '#2b251b', border: '#2e2719', text: '#f3e9d2', text2: '#c9b994', muted: '#8a7a58', accent: '#d4af37', onAccent: '#1a1404', accent2: '#e8d6a0', good: '#9bc16b', warn: '#e0a23a', bad: '#d0614b', sel: '#d4af3733', line: '#ffffff06' },
+      syn: { keyword: '#d4af37', string: '#c9d6a3', number: '#e8b86a', comment: '#6e6146', func: '#f0d58a', type: '#e8d6a0', variable: '#f3e9d2', tag: '#d4af37', attr: '#e8d6a0', operator: '#bfa76a', constant: '#e8b86a', prop: '#f0d58a' },
+      css: '.ltitle,.w-hero h1,.cert-name{background:linear-gradient(180deg,#f8e7a8,#c99a2e);-webkit-background-clip:text;background-clip:text;color:transparent!important}' },
+    { id: 'cyberpunk', name: 'Cyberpunk', dark: true, rank: 22,
+      ui: { shell: '#08080d', bg: '#0e0e16', bg2: '#13131e', bg3: '#1a1a28', bg4: '#232335', border: '#262638', text: '#f0f0ff', text2: '#b4b4d0', muted: '#6e6e92', accent: '#fcee0a', onAccent: '#111100', accent2: '#00f0ff', good: '#00ff9f', warn: '#ff9f00', bad: '#ff003c', sel: '#fcee0a30', line: '#ffffff06' },
+      syn: { keyword: '#ff003c', string: '#00ff9f', number: '#fcee0a', comment: '#5a5a7e', func: '#00f0ff', type: '#fcee0a', variable: '#f0f0ff', tag: '#ff003c', attr: '#00f0ff', operator: '#ff9f00', constant: '#fcee0a', prop: '#00f0ff' },
+      css: '.btn.primary{clip-path:polygon(0 0,100% 0,100% 70%,92% 100%,0 100%)}' },
+    { id: 'vapor', name: 'Vaporwave', dark: false, rank: 23,
+      ui: { shell: '#ffd6f1', bg: '#fff5fc', bg2: '#ffeaf8', bg3: '#fbdcf3', bg4: '#f3c8ea', border: '#f1c6e6', text: '#3a1d4a', text2: '#6f3f86', muted: '#a77fbd', accent: '#00b3c6', onAccent: '#ffffff', accent2: '#ff71ce', good: '#05a37a', warn: '#e08a1e', bad: '#e0306a', sel: '#00b3c62e', line: '#00000005' },
+      syn: { keyword: '#ff00aa', string: '#05a37a', number: '#7b2ff7', comment: '#c3a3d3', func: '#008ea0', type: '#b4519b', variable: '#3a1d4a', tag: '#e0306a', attr: '#7b2ff7', operator: '#00b3c6', constant: '#7b2ff7', prop: '#008ea0' },
+      css: 'body{background:linear-gradient(180deg,#ffd6f1,#c9f3ff)!important}#app{background:transparent!important}' },
+    { id: 'aurora', name: 'Aurora', dark: true, rank: 24,
+      ui: { shell: '#060b14', bg: '#0a1120', bg2: '#0e172a', bg3: '#131e35', bg4: '#1a2744', border: '#1b2742', text: '#e6f1ff', text2: '#a9bddb', muted: '#6880a8', accent: '#7cf5c4', onAccent: '#032518', accent2: '#b794f6', good: '#7cf5c4', warn: '#fcd34d', bad: '#fb7185', sel: '#7cf5c42e', line: '#ffffff07' },
+      syn: { keyword: '#b794f6', string: '#7cf5c4', number: '#fca5a5', comment: '#4c628a', func: '#7dd3fc', type: '#fde68a', variable: '#e6f1ff', tag: '#7cf5c4', attr: '#b794f6', operator: '#93c5fd', constant: '#fca5a5', prop: '#7dd3fc' },
+      css: 'body{background:radial-gradient(90% 60% at 20% 0%,#0f3b3a 0%,transparent 60%),radial-gradient(80% 60% at 90% 10%,#2b1b54 0%,transparent 60%),#060b14!important}#app{background:transparent!important}' },
   ];
   const LEGACY = { 'quill-dark': 'quill-night', 'quill-light': 'quill-day' };
 
@@ -44,6 +90,8 @@
     Object.entries(t.ui).forEach(([k, v]) => r.setProperty('--' + k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), v));
     Object.entries(t.syn).forEach(([k, v]) => r.setProperty('--syn-' + k, v));
     document.documentElement.dataset.dark = t.dark ? '1' : '0';
+    let ex = document.getElementById('theme-extra'); if (!ex) { ex = document.createElement('style'); ex.id = 'theme-extra'; document.head.append(ex); }
+    ex.textContent = t.css || '';
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = t.ui.shell;
   }
@@ -81,5 +129,5 @@
     };
   }
 
-  Q.themes = { list: T, get: (id) => T.find((t) => t.id === (LEGACY[id] || id)) || T[0], applyCss, monacoTheme };
+  Q.themes = { isUnlocked: (id) => { const t = T.find((x) => x.id === id); return !t || !t.rank || (Q.ranks ? Q.ranks.index() >= t.rank : false); }, list: T, get: (id) => T.find((t) => t.id === (LEGACY[id] || id)) || T[0], applyCss, monacoTheme };
 })();

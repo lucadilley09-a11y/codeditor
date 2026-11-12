@@ -53,6 +53,20 @@
     ['stylist', '🖌️', 'Stylist', 'Change the color theme'],
     ['weekend', '🏖️', 'Weekend Warrior', 'Finish a lesson on a weekend'],
     ['collector', '🏅', 'Collector', 'Unlock 15 badges'],
+    ['challenger', '⏱️', 'Challenger', 'Finish a timed challenge'],
+    ['three-stars', '⭐', 'Three Stars', 'Get 3 stars on a challenge'],
+    ['star-collector', '🌠', 'Star Collector', 'Get 3 stars on 10 challenges'],
+    ['unit-1', '📦', 'Unit Down', 'Finish a whole unit'],
+    ['unit-10', '🗃️', 'Ten Units', 'Finish 10 units'],
+    ['capstone', '🎓', 'Capstone', 'Finish a course capstone'],
+    ['cap-js', '⚔️', 'Arena Master', 'Finish the JavaScript capstone'],
+    ['cap-game', '🏁', 'Platform Hero', 'Finish the game-dev capstone'],
+    ['cap-py', '🗺️', 'Adventurer', 'Finish the Python capstone'],
+    ['cap-cs', '🪙', 'Coin Rusher', 'Finish the C# capstone'],
+    ['cap-lua', '🌙', 'Dodge Lord', 'Finish the Lua capstone'],
+    ['cap-cpp', '🗡️', 'Rogue', 'Finish the C++ capstone'],
+    ['goal-7', '🎯', 'Goal Getter', 'Hit your daily goal 7 days'],
+    ['rusty-fix', '🧽', 'Polished', 'Review 20 rusty items'],
   ];
 
   const state = Object.assign({ done: {}, xp: 0, streak: { last: null, count: 0 }, badges: {}, stats: {}, code: {}, perfect: {} }, store.get('learn', {}));
@@ -67,12 +81,12 @@
     return { lvl, into: xp - base, need, pct: Math.round(((xp - base) / need) * 100) };
   }
   const TITLES = ['Newbie', 'Apprentice', 'Tinkerer', 'Builder', 'Coder', 'Hacker', 'Engineer', 'Architect', 'Wizard', 'Legend'];
-  const titleFor = (lvl) => TITLES[Math.min(TITLES.length - 1, Math.floor((lvl - 1) / 2))];
+  const titleFor = (lvl) => (Q.ranks ? Q.ranks.list[Math.min(Q.ranks.list.length - 1, lvl - 1)].name : TITLES[Math.min(TITLES.length - 1, Math.floor((lvl - 1) / 2))]);
 
   function renderXP(bump) {
     const el = document.getElementById('xp'); if (!el) return;
     const L = levelInfo();
-    el.innerHTML = `<div class="xp-ring" style="--p:${L.pct}"><span>${L.lvl}</span></div><span class="xp-num">${state.xp} XP</span>${state.streak.count ? `<span class="xp-streak" title="Day streak">${icon('flame', 13)}${state.streak.count}</span>` : ''}`;
+    el.innerHTML = `${Q.ranks ? Q.ranks.badgeHtml(Q.ranks.current(), 18) : ''}<div class="xp-ring" style="--p:${L.pct}"><span>${L.lvl}</span></div><span class="xp-num">${state.xp} XP</span>${state.streak.count ? `<span class="xp-streak" title="Day streak">${icon('flame', 13)}${state.streak.count}</span>` : ''}`;
     el.title = `Level ${L.lvl} · ${titleFor(L.lvl)} — ${L.into}/${L.need} XP to next level`;
     el.onclick = () => Q.learn.showBadges();
     if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
@@ -80,7 +94,7 @@
 
   function addXP(n, why) {
     const before = levelInfo().lvl;
-    state.xp += n; save(); renderXP(true);
+    state.xp += n; logDay(n); save(); renderXP(true); Q.progress?.onXP?.(n, before);
     toast(`+${n} XP${why ? ' · ' + why : ''}`, 'xp', 1800);
     const after = levelInfo().lvl;
     if (after >= 5) badge('level-5'); if (after >= 10) badge('level-10'); if (state.xp >= 1000) badge('xp-1000');
@@ -128,7 +142,7 @@
   function lockedBy(course, lesson) {
     if (state.done[key(course.id, lesson.id)]) return null; // finished lessons never lock, even if new ones were added before them
     const i = course.lessons.indexOf(lesson);
-    const first = course.lessons.findIndex((l) => !state.done[key(course.id, l.id)]);
+    const first = course.lessons.findIndex((l) => !l.optional && !state.done[key(course.id, l.id)]);
     return first >= 0 && i > first ? course.lessons[first] : null;
   }
   function open(courseId, lessonId, { force } = {}) {
@@ -142,12 +156,18 @@
       ] });
       return;
     }
+    start(course, lesson);
+  }
+  function start(course, lesson) {
+    if (lesson.regen) { lesson.steps = lesson.regen(Q.gen.freshSeed()); if (!lesson.hand) delete state.code[key(course.id, lesson.id)]; }
     state.langsOpened = [...new Set([...(state.langsOpened || []), course.lang])];
     if (state.langsOpened.length >= 3) badge('explorer');
     if (!state.lang) state.lang = course.lang;
     if (S && tabId() && app.virtuals.has(tabId())) { persistCode(); app.closeVirtual(tabId()); }
-    S = { course, lesson, i: 0, attempts: 0, mistakes: 0, solved: {}, hint: 0, usedHints: false };
-    state.current = { course: course.id, lesson: lesson.id }; save();
+    S = { course, lesson, i: 0, attempts: 0, mistakes: 0, solved: {}, hint: 0, usedHints: false, started: Date.now(), stepStart: Date.now(), missed: new Set() };
+    if (lesson.kind === 'challenge') S.limit = timeLimit(lesson);
+    clearInterval(timerId); if (S.limit) timerId = setInterval(tickTimer, 1000);
+    if (!lesson.temp) { state.current = { course: course.id, lesson: lesson.id }; save(); }
     app.showRight('lesson');
     if (hasCode(lesson)) {
       const first = lesson.steps.find((s) => s.type === 'code');
@@ -159,7 +179,7 @@
   }
   function close() {
     if (!S) return;
-    persistCode();
+    persistCode(); clearInterval(timerId);
     const id = tabId(); S = null;
     app.focusLearn && app.focusLearn(false);
     if (app.virtuals.has(id)) app.closeVirtual(id);
@@ -171,7 +191,7 @@
     if (!S) return;
     persistCode();
     const prev = step();
-    S.i = Math.max(0, Math.min(S.lesson.steps.length, i)); S.attempts = 0; S.hint = 0;
+    S.i = Math.max(0, Math.min(S.lesson.steps.length, i)); S.attempts = 0; S.hint = 0; S.stepStart = Date.now();
     const st = step();
     if (st && st.type === 'code' && st.starter != null && !st.keep && prev !== st) {
       // only replace code when the step brings new starter code and hasn't been solved before
@@ -189,7 +209,7 @@
     const { course, lesson } = S;
     const steps = lesson.steps;
     el.append(h('div', { class: 'lhead' },
-      h('div', { class: 'lcrumb', html: `<span class="fbadge" style="--c:${course.color}">${esc(course.badge)}</span>${esc(course.title)} · Lesson ${course.lessons.indexOf(lesson) + 1} of ${course.lessons.length}` }),
+      h('div', { class: 'lcrumb', html: `<span class="fbadge" style="--c:${course.color}">${esc(course.badge)}</span>${esc(course.title)}${lesson.unit ? ` · Unit ${lesson.unit}` : ''}${lesson.temp ? '' : ` · ${course.lessons.indexOf(lesson) + 1} of ${course.lessons.length}`}${S.limit ? `<span class="ltimer" id="ltimer">${fmtTime(S.limit)}</span>` : ''}` }),
       h('div', { class: 'ltitle', text: lesson.title }),
       h('div', { class: 'lsteps' }, ...steps.map((s, j) => h('div', { class: 'lstep' + (j < S.i || S.solved[j] ? ' done' : '') + (j === S.i ? ' on' : ''), title: `Step ${j + 1}`, onclick: () => (j <= S.i || S.solved[j - 1] || state.done[key(course.id, lesson.id)]) && go(j) })))));
     const body = h('div', { class: 'lbody' });
@@ -199,6 +219,7 @@
     const st = step();
     const back = h('button', { class: 'btn ghost', html: `${icon('arrowLeft', 14)}`, title: 'Previous step', disabled: S.i === 0, onclick: () => go(S.i - 1) });
     foot.append(back);
+    if (st.tag) body.append(h('div', { class: 'skill-tag', text: st.tag }));
     if (st.type === 'read') renderRead(st, body, foot);
     else if (st.type === 'quiz' || st.type === 'predict') renderQuiz(st, body, foot);
     else if (st.type === 'code') renderCode(st, body, foot);
@@ -217,6 +238,13 @@
 
   function renderRead(st, body, foot) {
     body.append(richText(st.html));
+    if (st.creative) {
+      const k = key(S.course.id, S.lesson.id) + '#own';
+      state.creative = state.creative || {};
+      foot.append(h('div', { class: 'grow' }), h('button', { class: 'btn ghost', text: 'Skip', onclick: () => { S.solved[S.i] = true; go(S.i + 1); } }),
+        h('button', { class: 'btn primary', html: state.creative[k] ? `Done ${icon('check', 14)}` : `I made it my own · +${st.bonus || 50} XP`, onclick: () => { if (!state.creative[k]) { state.creative[k] = Date.now(); addXP(st.bonus || 50, 'made it your own'); } S.solved[S.i] = true; go(S.i + 1); } }));
+      return;
+    }
     foot.append(h('div', { class: 'grow' }), h('button', { class: 'btn primary', html: `Continue ${icon('arrowRight', 14)}`, onclick: () => { S.solved[S.i] = true; go(S.i + 1); } }));
   }
 
@@ -236,10 +264,12 @@
         if (j === st.answer) {
           b.classList.add('right'); S.solved[S.i] = true; next.disabled = false;
           fb.innerHTML = ''; fb.append(h('div', { class: 'feedback good', html: `${icon('check', 16)}<div><b>${pick(['Correct!', 'Nailed it!', 'Exactly right!', 'Yes!', 'Spot on!'])}</b> ${st.explain || ''}</div>` }));
-          if (S.attempts === 0) { state.xp += 2; save(); renderXP(true); }
+          if (S.attempts === 0) { state.xp += 2; logDay(2); save(); renderXP(true); }
+          noteResult(st, S.attempts === 0); Q.sound?.play('right');
           stat('quizzes'); if (S.attempts === 0) stat('quizFirst');
         } else {
-          b.classList.add('wrong'); b.disabled = true; S.attempts++; S.mistakes++;
+          b.classList.add('wrong'); b.disabled = true; S.attempts++; S.mistakes++; S.missed.add(S.i);
+          noteResult(st, false); requeue(st); Q.sound?.play('wrong');
           fb.innerHTML = ''; fb.append(h('div', { class: 'feedback bad', html: `${icon('close', 16)}<div><b>Not quite.</b> ${st.wrong?.[j] || 'Have another look and try again.'}</div>` }));
         }
       };
@@ -277,7 +307,13 @@
     } });
     const checkBtn = h('button', { class: 'btn primary', id: 'lesson-check', html: `${icon('play', 12)} Check <kbd style="background:transparent;border-color:#fff6;color:#fff">Ctrl ⏎</kbd>`, onclick: () => check() });
     const nextBtn = h('button', { class: 'btn good', html: `Continue ${icon('arrowRight', 14)}`, onclick: () => go(S.i + 1) });
-    foot.append(hintBtn, solBtn, h('div', { class: 'grow' }), S.solved[S.i] ? nextBtn : checkBtn);
+    const locked = S.lesson.kind === 'challenge' && S.attempts < 3 && !S.solved[S.i];
+    if (locked) { hintBtn.style.display = solBtn.style.display = 'none'; foot.append(h('span', { class: 'muted small', id: 'help-locked', text: 'Hints unlock after 3 tries' })); }
+    hintBtn.id = 'lesson-hint'; solBtn.id = 'lesson-sol';
+    const isTest = S.lesson.kind === 'test' || S.lesson.kind === 'testout';
+    if (isTest) { hintBtn.style.display = solBtn.style.display = 'none'; }
+    const skipBtn = isTest && !S.solved[S.i] ? h('button', { class: 'btn ghost', text: 'Skip', title: 'Skip this level (counts as missed)', onclick: () => { S.missed.add(S.i); S.solved[S.i] = true; go(S.i + 1); } }) : '';
+    foot.append(hintBtn, solBtn, h('div', { class: 'grow' }), skipBtn, S.solved[S.i] ? nextBtn : checkBtn);
     if (app.virtuals.has(tabId()) && app.editor.activeId !== tabId()) app.activate(tabId());
   }
 
@@ -326,8 +362,9 @@
       let res;
       if (r.errors.length) res = false; else try { res = st.check(r, H); } catch (e) { res = 'Something in your code stopped the check from running: ' + esc(e.message); }
       if (res === true && !r.errors.length) return success(st, fb);
-      S.attempts++; S.mistakes++;
-      stat('failedChecks');
+      S.attempts++; S.mistakes++; S.missed.add(S.i);
+      stat('failedChecks'); noteResult(st, false); requeue(st); Q.sound?.play('wrong');
+      if (S.lesson.kind === 'challenge' && S.attempts >= 3) { ['lesson-hint', 'lesson-sol'].forEach((id) => { const b = document.getElementById(id); if (b) b.style.display = ''; }); document.getElementById('help-locked')?.remove(); }
       fb.innerHTML = '';
       if (r.errors.length) {
         const e = r.errors[0];
@@ -347,7 +384,9 @@
   }
   function success(st, fb) {
     S.solved[S.i] = true; persistCode();
-    stat('checks');
+    stat('checks'); noteResult(st, S.attempts === 0); Q.sound?.play('right');
+    const secs = Math.min(600, (Date.now() - S.stepStart) / 1000);
+    state.perf = state.perf || { steps: 0, fails: 0, secs: 0 }; state.perf.steps++; state.perf.fails += S.attempts; state.perf.secs += secs; logTime(secs);
     if (S.attempts === 0) stat('firstTry');
     if (S.attempts >= 3) badge('comeback');
     fb.innerHTML = '';
@@ -361,6 +400,10 @@
 
   function renderDone(body, foot) {
     const { course, lesson } = S;
+    clearInterval(timerId);
+    if (lesson.temp) return renderTempDone(body, foot);
+    if (lesson.kind === 'test' || lesson.kind === 'testout') return renderTestDone(body, foot);
+    if (lesson.kind === 'challenge') return renderChallengeDone(body, foot);
     const k = key(course.id, lesson.id);
     const first = !state.done[k];
     const xp = lesson.xp || 20;
@@ -370,15 +413,17 @@
       stat('lessons');
       touchStreak();
       addXP(xp + (S.mistakes === 0 ? 5 : 0), S.mistakes === 0 ? 'flawless bonus' : 'lesson complete');
+      if (lesson.kind === 'capstone') { badge(lesson.badge || 'capstone'); setTimeout(() => certificate(course), 1200); }
+      unitCheck(course, lesson);
       badge('first-lesson');
       if (n >= 5) badge('five-lessons'); if (n >= 10) badge('ten-lessons'); if (n >= 25) badge('twentyfive-lessons');
       if (S.mistakes === 0) badge('perfect');
       const hr = new Date().getHours(); if (hr >= 22) badge('night-owl'); if (hr < 7) badge('early-bird');
-      if (course.lessons.every((l) => state.done[key(course.id, l.id)])) { badge('course-complete'); setTimeout(() => toast(`You completed the <b>${esc(course.title)}</b> course! 🏆`, 'success', 5000), 800); }
+      if (course.lessons.filter((l) => !l.optional).every((l) => state.done[key(course.id, l.id)])) { badge('course-complete'); setTimeout(() => toast(`You completed the <b>${esc(course.title)}</b> course! 🏆`, 'success', 5000), 800); }
       const langs = new Set(Object.keys(state.done).map((x) => courses.find((c) => c.id === x.split('/')[0])?.lang)); if (langs.size >= 3) badge('polyglot');
       if (langs.size >= 5) badge('polyglot-5'); if (langs.size >= 10) badge('polyglot-10');
       const reviewLangs = new Set(Object.keys(state.done).map((x) => courses.find((c) => c.id === x.split('/')[0])).filter((c) => c && c.run === 'none').map((c) => c.lang)); if (reviewLangs.size >= 3) badge('tourist');
-      const fullCourses = courses.filter((c) => c.lessons.every((l) => state.done[key(c.id, l.id)])).length; if (fullCourses >= 2) badge('two-courses');
+      const fullCourses = courses.filter((c) => c.lessons.filter((l) => !l.optional).every((l) => state.done[key(c.id, l.id)])).length; if (fullCourses >= 2) badge('two-courses');
       if (n >= 50) badge('fifty-lessons'); if (n >= 100) badge('hundred-lessons');
       if ([0, 6].includes(new Date().getDay())) badge('weekend');
       if (hasCode(lesson) && !S.usedHints && !S.usedSolution) badge('no-hints');
@@ -395,12 +440,123 @@
       h('h3', { text: 'Lesson complete!' }),
       h('p', { text: S.mistakes === 0 ? 'Flawless — not a single mistake.' : `You worked through ${S.mistakes} mistake${S.mistakes === 1 ? '' : 's'} — that’s exactly how learning works.` }),
       first ? h('div', { class: 'xp-gain', html: `${icon('star', 15)} +${xp + (S.mistakes === 0 ? 5 : 0)} XP` }) : h('div', { class: 'xp-gain', html: `${icon('check', 15)} Already completed` }),
-      lesson.recap ? h('div', { class: 'tip', style: { textAlign: 'left' }, html: `${icon('book', 16)}<div><b>Recap:</b> ${lesson.recap}</div>` }) : ''));
+      lesson.recap ? h('div', { class: 'tip', style: { textAlign: 'left' }, html: `${icon('book', 16)}<div><b>Recap:</b> ${lesson.recap}</div>` }) : '',
+      lesson.kind === 'capstone' ? h('button', { class: 'btn', style: { marginTop: '10px' }, html: `${icon('star', 14)} View certificate`, onclick: () => certificate(course) }) : ''));
     foot.append(h('button', { class: 'btn ghost', text: 'Review', onclick: () => go(0) }), h('div', { class: 'grow' }));
     if (nextL) foot.append(h('button', { class: 'btn primary', html: `Next: ${esc(nextL.title)} ${icon('arrowRight', 14)}`, onclick: () => open(course.id, nextL.id) }));
     else foot.append(h('button', { class: 'btn primary', html: `Back to courses ${icon('learn', 14)}`, onclick: () => { close(); app.showView('learn'); } }));
     Q.learn.renderSidebar();
   }
+
+  /* ---------- generated levels: skills, retries, timers, tests ---------- */
+  function noteResult(st, ok) { if (st.generated && !st.noted && S) { st.noted = true; Q.gen.record(S.course.id, st.tpl, ok); } }
+  function requeue(st) {
+    if (!S || !st.generated || st.requeued || st.retry || ['test', 'testout', 'challenge'].includes(S.lesson.kind)) return;
+    st.requeued = true;
+    const s = Q.gen.again(S.course.id, st); if (!s) return;
+    S.lesson.steps.push(s);
+    host()?.querySelector('.lsteps')?.append(h('div', { class: 'lstep', title: `Step ${S.lesson.steps.length} · retry` }));
+  }
+  let timerId = 0;
+  const fmtTime = (sec) => { sec = Math.max(0, Math.round(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+  function timeLimit(lesson) {
+    const base = lesson.steps.reduce((t, s) => t + (s.type === 'code' ? (/Fix/.test(s.tag || '') ? 100 : /Fill/.test(s.tag || '') ? 75 : 130) : s.type === 'read' ? 15 : 35), 0);
+    const p = state.perf || {}; const n = p.steps || 0;
+    const failRate = n ? p.fails / n : 0.6, pace = n ? p.secs / n / 90 : 1; // your history: mistakes per level and seconds per level
+    return Math.round(base * Math.min(1.75, Math.max(0.75, 0.55 + failRate * 0.3 + pace * 0.45)));
+  }
+  function tickTimer() {
+    const el = document.getElementById('ltimer'); if (!S || !S.limit || !el) return;
+    const left = S.limit - (Date.now() - S.started) / 1000;
+    el.textContent = left > 0 ? fmtTime(left) : 'No star · keep going'; el.classList.toggle('over', left <= 0); el.classList.toggle('low', left > 0 && left < 30);
+  }
+  const levelIdx = () => S.lesson.steps.map((s, j) => (s.type === 'read' ? -1 : j)).filter((j) => j >= 0);
+  function renderTestDone(body, foot) {
+    const { course, lesson } = S; const k = key(course.id, lesson.id);
+    const lv = levelIdx(); const missed = lv.filter((j) => S.missed.has(j));
+    const pct = Math.round(((lv.length - missed.length) / Math.max(1, lv.length)) * 100); const pass = pct >= 80;
+    const unit = course.units?.find((u) => u.n === lesson.unit);
+    if (pass) {
+      Q.sound?.play('levelup');
+      if (lesson.kind === 'testout' && unit) { unit.lessons.forEach((l) => { if (!l.optional && !state.done[key(course.id, l.id)]) state.done[key(course.id, l.id)] = Date.now(); }); }
+      if (!state.done[k]) { state.done[k] = Date.now(); touchStreak(); addXP(lesson.kind === 'testout' ? 60 : lesson.xp, lesson.kind === 'testout' ? 'tested out' : 'unit test passed'); stat('lessons'); Q.confetti(); }
+      unitCheck(course, lesson);
+    }
+    const skills = [...new Set(missed.map((j) => (S.lesson.steps[j].tag || '').split(' · ')[0]).filter(Boolean))];
+    body.append(h('div', { class: 'done-card' },
+      h('div', { class: 'big', text: pass ? '🏅' : '📝' }),
+      h('h3', { text: pass ? (lesson.kind === 'testout' ? 'Tested out!' : 'Test passed!') : 'Not quite yet' }),
+      h('div', { class: 'score-ring' + (pass ? ' pass' : ''), style: { '--p': pct }, html: `<span>${pct}%</span>` }),
+      h('p', { text: pass ? (lesson.kind === 'testout' ? `Every lesson in Unit ${lesson.unit} is now marked done.` : 'You know this unit. On to the next one!') : `You need 80% to pass. ${lesson.kind === 'testout' ? 'No problem — the lessons will teach you everything.' : 'Practise what you missed, then try again with new levels.'}` }),
+      skills.length ? h('div', { class: 'missed', html: `<b>Missed:</b> ${skills.map(esc).join(' · ')}` }) : ''));
+    foot.append(h('div', { class: 'grow' }));
+    if (pass) { const nx = course.lessons.slice(course.lessons.indexOf(lesson) + 1).find((l) => !l.optional && !state.done[key(course.id, l.id)]); if (nx) foot.append(h('button', { class: 'btn primary', html: `Next: ${esc(nx.title)} ${icon('arrowRight', 14)}`, onclick: () => open(course.id, nx.id) })); }
+    else if (lesson.kind === 'testout') { const first = unit?.lessons.find((l) => !l.optional && !state.done[key(course.id, l.id)]); if (first) foot.append(h('button', { class: 'btn primary', html: `Start the unit ${icon('arrowRight', 14)}`, onclick: () => open(course.id, first.id, { force: true }) })); }
+    else {
+      foot.append(h('button', { class: 'btn', text: 'Retry with new levels', onclick: () => open(course.id, lesson.id, { force: true }) }));
+      if (missed.length) foot.append(h('button', { class: 'btn primary', html: `Practise what I missed ${icon('arrowRight', 14)}`, onclick: () => {
+        const steps = [{ type: 'read', html: `<h4>Practise what you missed</h4><p>New versions of the levels you missed. Then retry the test.</p>` }];
+        missed.forEach((j) => { const st = S.lesson.steps[j]; if (st.generated) { const a = Q.gen.again(course.id, st), b = Q.gen.again(course.id, st); if (a) steps.push(a); if (b) steps.push(b); } else steps.push(st); });
+        start(course, { id: lesson.id + '~review', title: 'Review: what you missed', temp: true, retryOf: lesson.id, steps });
+      } }));
+    }
+    Q.learn.renderSidebar();
+  }
+  function renderTempDone(body, foot) {
+    const { course, lesson } = S;
+    body.append(h('div', { class: 'done-card' }, h('div', { class: 'big', text: '💪' }), h('h3', { text: 'Practice done' }), h('p', { text: 'Ready to try again?' })));
+    foot.append(h('div', { class: 'grow' }), h('button', { class: 'btn primary', html: `Retry the test ${icon('arrowRight', 14)}`, onclick: () => open(course.id, lesson.retryOf, { force: true }) }));
+  }
+  function renderChallengeDone(body, foot) {
+    const { course, lesson } = S; const k = key(course.id, lesson.id);
+    const secs = (Date.now() - S.started) / 1000, L = S.limit || 1;
+    const stars = secs <= L * 0.25 ? 3 : secs <= L * 0.5 ? 2 : secs <= L ? 1 : 0;
+    state.stars = state.stars || {};
+    const before = state.stars[k] || 0, first = !state.done[k];
+    if (first) { state.done[k] = Date.now(); touchStreak(); stat('challenges'); }
+    if (stars > before) state.stars[k] = stars;
+    const gain = (first ? lesson.xp : 0) + Math.max(0, [0, 15, 40, 75][stars] - [0, 15, 40, 75][before]);
+    if (gain) addXP(gain, stars ? `${stars}★ challenge` : 'challenge complete');
+    if (stars) { Q.sound?.play('levelup'); Q.confetti(); }
+    badge('challenger'); if (stars === 3) badge('three-stars');
+    if (Object.values(state.stars).filter((x) => x === 3).length >= 10) badge('star-collector');
+    save();
+    body.append(h('div', { class: 'done-card' },
+      h('div', { class: 'stars', html: [1, 2, 3].map((n) => `<span class="${n <= stars ? 'on' : ''}">★</span>`).join('') }),
+      h('h3', { text: stars ? 'Challenge beaten!' : 'Challenge complete' }),
+      h('p', { text: `${fmtTime(secs)} of ${fmtTime(L)}. ${stars === 3 ? 'Lightning fast!' : stars ? 'Faster = more stars: 3★ under a quarter of the timer.' : 'Beat the timer next time for stars.'}` }),
+      gain ? h('div', { class: 'xp-gain', html: `${icon('star', 15)} +${gain} XP` }) : ''));
+    foot.append(h('button', { class: 'btn ghost', text: 'Try again', onclick: () => open(course.id, lesson.id, { force: true }) }), h('div', { class: 'grow' }));
+    const nx = course.lessons.slice(course.lessons.indexOf(lesson) + 1).find((l) => !l.optional && !state.done[key(course.id, l.id)]);
+    if (nx) foot.append(h('button', { class: 'btn primary', html: `Next: ${esc(nx.title)} ${icon('arrowRight', 14)}`, onclick: () => open(course.id, nx.id) }));
+    Q.learn.renderSidebar();
+  }
+  function unitCheck(course, lesson) {
+    const u = course.units?.find((x) => x.n === lesson.unit); if (!u) return;
+    state.unitsDone = state.unitsDone || {};
+    const uk = `${course.id}/${u.n}`;
+    if (state.unitsDone[uk] || !u.lessons.filter((l) => !l.optional).every((l) => state.done[key(course.id, l.id)])) return;
+    state.unitsDone[uk] = Date.now(); save();
+    setTimeout(() => { addXP(50, `${u.title} complete`); badge('unit-1'); if (Object.keys(state.unitsDone).length >= 10) badge('unit-10'); }, 900);
+  }
+  async function certificate(course) {
+    if (!state.name) { const n = await Q.prompt('Your name for the certificate', 'Shown on your certificate. Stored only in this browser.', ''); if (n == null) return; state.name = n.trim() || 'Coder'; save(); }
+    const req = course.lessons.filter((l) => !l.optional);
+    const done = req.filter((l) => state.done[key(course.id, l.id)]).length;
+    const skills = Object.entries(state.skill || {}).filter(([k]) => k.startsWith(course.id + '/'));
+    const ok = skills.reduce((a, [, v]) => a + v.ok, 0), all = skills.reduce((a, [, v]) => a + v.ok + v.bad, 0);
+    const rank = Q.ranks ? Q.ranks.of(state.xp) : null;
+    modal({ title: '', cls: 'cert-modal', body: `<div class="cert" style="--c:${course.color}">
+      <div class="cert-k">Certificate of completion</div>
+      <div class="cert-name">${esc(state.name)}</div>
+      <div class="cert-line">completed the capstone of</div>
+      <div class="cert-course">${esc(course.title)}</div>
+      <div class="cert-stats"><div><b>${done}</b><span>lessons</span></div><div><b>${all ? Math.round((ok / all) * 100) + '%' : '—'}</b><span>accuracy</span></div><div><b>${rank ? esc(rank.name) : 'Level ' + levelInfo().lvl}</b><span>rank</span></div></div>
+      <div class="cert-date">${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} · ${esc(Q.APP)}</div></div>`, buttons: [{ label: 'Close', primary: true }] });
+  }
+  const today2 = () => new Date().toLocaleDateString('en-CA');
+  function logDay(xp, secs = 0) { state.days = state.days || {}; const d = (state.days[today2()] = state.days[today2()] || { xp: 0, secs: 0 }); d.xp += xp; d.secs += secs; }
+  function logTime(secs) { if (!S) return; state.timeLang = state.timeLang || {}; state.timeLang[S.course.lang] = (state.timeLang[S.course.lang] || 0) + secs; logDay(0, secs); }
 
   function renderEmpty(el) {
     const n = nextLesson();
@@ -415,12 +571,13 @@
 
   /* ---------- Sidebar ---------- */
   const expanded = new Set(store.get('learnOpen', []));
+  const unitOpen = new Set(), unitClosed = new Set();
   const LI = () => Q.langInfo;
   const langName = (id) => Q.langs.byId[id]?.name || id;
   const dots = (n) => `<span class="diff" title="Difficulty ${n} of 5">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
   function langStats(id) {
     const cs = courses.filter((c) => c.lang === id);
-    const ls = cs.flatMap((c) => c.lessons.map((l) => ({ c, l })));
+    const ls = cs.flatMap((c) => c.lessons.filter((l) => !l.optional).map((l) => ({ c, l })));
     return { courses: cs, lessons: ls.length, done: ls.filter(({ c, l }) => state.done[key(c.id, l.id)]).length, mins: ls.reduce((m, { l }) => m + minutes(l), 0) };
   }
   function renderSidebar() {
@@ -431,9 +588,10 @@
     const body = h('div', { class: 'view-body' });
     v.append(h('div', { class: 'view-head' }, h('span', { text: 'Learn' }), h('div', { class: 'tools' }, h('button', { class: 'icon-btn sm', title: 'Badges & stats', html: icon('trophy', 15), onclick: () => showBadges() }))), body);
     body.append(h('button', { class: 'learn-hero', title: 'Progress & badges', onclick: () => showBadges() },
-      h('div', { class: 'lh-top', html: `<span class="lvl">Level ${L.lvl}</span><span class="lt">${titleFor(L.lvl)}</span><span class="lstreak">${icon('flame', 13)}${state.streak.count}</span>` }),
+      h('div', { class: 'lh-top', html: `${Q.ranks ? Q.ranks.badgeHtml(Q.ranks.current(), 20) : ''}<span class="lvl">${esc(titleFor(L.lvl))}</span><span class="lt">Level ${L.lvl}</span><span class="lstreak">${icon('flame', 13)}${state.streak.count}</span>` }),
       h('div', { class: 'bar', html: `<i style="width:${L.pct}%"></i>` }),
-      h('div', { class: 'stats', html: `<span>${L.into} / ${L.need} XP</span><span>${Object.keys(state.badges).length} of ${BADGES.length} badges</span>` })));
+      h('div', { class: 'stats', html: `<span>${L.into} / ${L.need} XP</span><span>${Object.keys(state.badges).length} of ${BADGES.length} badges</span>` }),
+      Q.progress ? h('div', { class: 'lh-links' }, h('button', { class: 'lh-link', html: `${icon('trophy', 12)} Stats`, onclick: () => Q.progress.showStats() }), h('button', { class: 'lh-link', html: `${icon('refresh', 12)} Refresher${Q.refresher.rustyCount() ? ` · ${Q.refresher.rustyCount()} rusty` : ''}`, onclick: () => Q.refresher.show({ manual: true }) })) : ''));
     const lang = state.lang;
     if (!lang) {
       body.append(h('div', { class: 'pick-card' },
@@ -448,7 +606,7 @@
         h('div', { class: 'course-bar', style: { '--c': Lg?.color }, html: `<i style="width:${st.lessons ? (st.done / st.lessons) * 100 : 0}%"></i>` }),
         h('div', { class: 'pa-meta', text: `${st.done} of ${st.lessons} lessons · ${dur(st.mins)} total` })));
       const n = nextLesson();
-      if (n) body.append(h('div', { style: { padding: '0 8px 10px' } }, h('button', { class: 'btn primary', style: { width: '100%', height: '36px' }, html: `${icon('play', 12)} ${S ? 'Next' : 'Continue'}: ${esc(n.lesson.title)}`, onclick: () => open(n.course.id, n.lesson.id) })));
+      if (n) body.append(h('div', { style: { padding: '0 8px 10px' } }, h('button', { class: 'btn primary cont', style: { width: '100%', height: '36px' }, title: n.lesson.title, html: `${icon('play', 12)}<span>${S ? 'Next' : 'Continue'}: ${esc(n.lesson.title)}</span>`, onclick: () => open(n.course.id, n.lesson.id) })));
       st.courses.forEach((c, ci) => body.append(courseBox(c, ci, st.courses)));
       const related = courses.filter((c) => c.lang !== lang && (c.related || []).includes(lang));
       if (related.length) { body.append(h('div', { class: 'section-label', text: 'Pairs well with' })); related.forEach((c) => body.append(courseBox(c, 0, [c]))); }
@@ -458,23 +616,42 @@
     body.scrollTop = scroll;
   }
   function courseBox(c, ci, list) {
-    const done = c.lessons.filter((l) => state.done[key(c.id, l.id)]).length;
+    const reqL = c.lessons.filter((l) => !l.optional);
+    const done = reqL.filter((l) => state.done[key(c.id, l.id)]).length;
     const prevDone = ci === 0 || list.slice(0, ci).every((p) => p.lessons.every((l) => state.done[key(p.id, l.id)]));
     const isOpen = expanded.has(c.id) || S?.course.id === c.id || (!expanded.size && ci === 0);
     const box = h('div', { class: 'course' + (isOpen ? ' open' : ''), style: { '--c': c.color } });
-    const total = c.lessons.reduce((m, l) => m + minutes(l), 0);
-    const head = h('button', { class: 'course-head' }, h('div', { class: 'course-ic', text: c.badge }), h('div', { class: 'course-info' }, h('div', { class: 'course-title', text: c.title }), h('div', { class: 'course-meta', text: `${done}/${c.lessons.length} lessons · ~${total < 90 ? total + ' min' : Math.round(total / 6) / 10 + ' h'}${c.run === 'none' ? ' · reviewed' : ''}` }), h('div', { class: 'course-bar', html: `<i style="width:${(done / c.lessons.length) * 100}%"></i>` })), h('span', { html: icon('chevron', 14), style: { color: 'var(--muted)', transform: isOpen ? 'rotate(90deg)' : '', transition: 'transform .2s' } }));
+    const total = c.lessons.filter((l) => !l.optional).reduce((m, l) => m + minutes(l), 0);
+    const head = h('button', { class: 'course-head' }, h('div', { class: 'course-ic', text: c.badge }), h('div', { class: 'course-info' }, h('div', { class: 'course-title', text: c.title }), h('div', { class: 'course-meta', text: `${done}/${reqL.length} lessons${c.units ? ` · ${c.units.length} units` : ''} · ~${total < 90 ? total + ' min' : Math.round(total / 6) / 10 + ' h'}${c.run === 'none' ? ' · reviewed' : ''}` }), h('div', { class: 'course-bar', html: `<i style="width:${(done / reqL.length) * 100}%"></i>` })), h('span', { html: icon('chevron', 14), style: { color: 'var(--muted)', transform: isOpen ? 'rotate(90deg)' : '', transition: 'transform .2s' } }));
     head.onclick = () => { isOpen ? expanded.delete(c.id) : expanded.add(c.id); store.set('learnOpen', [...expanded]); renderSidebar(); };
     const ls = h('div', { class: 'lessons' });
     if (c.desc2) ls.append(h('p', { class: 'course-desc', html: c.desc2 }));
     if (!prevDone) ls.append(h('p', { class: 'course-desc', html: `${icon('info', 13)} Best after finishing <b>${esc(list[ci - 1].title)}</b>.` }));
-    const firstUndone = c.lessons.findIndex((l) => !state.done[key(c.id, l.id)]);
-    c.lessons.forEach((l, j) => {
+    const firstUndone = c.lessons.findIndex((l) => !l.optional && !state.done[key(c.id, l.id)]);
+    const row = (l, j) => {
       const d = !!state.done[key(c.id, l.id)];
-      const locked = firstUndone >= 0 && j > firstUndone;
-      ls.append(h('button', { class: 'lsn' + (d ? ' done' : '') + (j === firstUndone ? ' current' : '') + (locked ? ' locked' : '') + (S?.lesson === l ? ' active' : ''), onclick: () => open(c.id, l.id) },
-        h('span', { class: 'st', html: d ? icon('check', 11) : locked ? icon('lock', 10) : String(j + 1) }), h('span', { class: 'ln', text: l.title }), h('span', { class: 'xpv', text: `${minutes(l)} min` })));
-    });
+      const locked = firstUndone >= 0 && j > firstUndone && !d;
+      const kind = l.kind || (l.gen ? 'practice' : '');
+      const glyph = { practice: 'refresh', test: 'target', testout: 'arrowRight', challenge: 'timer', project: 'box', capstone: 'trophy' }[kind];
+      const stars = kind === 'challenge' && state.stars?.[key(c.id, l.id)];
+      const rusty = d && Q.refresher?.isRusty?.(c.id, l.id);
+      const right = kind === 'challenge' ? `<span class="stars-mini">${[1, 2, 3].map((n) => `<i class="${n <= (stars || 0) ? 'on' : ''}">★</i>`).join('')}</span>` : `${minutes(l)} min`;
+      return h('button', { class: 'lsn' + (d ? ' done' : '') + (j === firstUndone ? ' current' : '') + (locked ? ' locked' : '') + (S?.lesson === l ? ' active' : '') + (kind ? ' k-' + kind : '') + (l.optional ? ' opt' : '') + (rusty ? ' rusty' : ''), title: rusty ? 'Getting rusty — the refresher will bring it back' : l.optional ? 'Optional' : '', onclick: () => open(c.id, l.id) },
+        h('span', { class: 'st', html: d ? icon('check', 11) : locked ? icon('lock', 10) : glyph ? icon(glyph, 11) : '' }), h('span', { class: 'ln', text: l.title }), h('span', { class: 'xpv', html: right }));
+    };
+    if (c.units?.length) {
+      const curUnit = (c.lessons[firstUndone] || S?.lesson || {}).unit;
+      c.units.forEach((u) => {
+        const req = u.lessons.filter((l) => !l.optional); const ud = req.filter((l) => state.done[key(c.id, l.id)]).length;
+        const uk = `${c.id}/${u.n}`; const open_ = unitOpen.has(uk) || (!unitClosed.has(uk) && (u.n === curUnit || (S?.course === c && S.lesson.unit === u.n)));
+        const uh = h('button', { class: 'unit-head' + (open_ ? ' open' : '') + (ud === req.length ? ' done' : '') },
+          h('span', { class: 'chev', html: icon('chevron', 11) }), h('span', { class: 'un', text: u.title }), h('span', { class: 'uc', text: ud === req.length ? '✓' : `${ud}/${req.length}` }),
+          h('i', { class: 'ubar', style: { width: `${(ud / Math.max(1, req.length)) * 100}%` } }));
+        uh.onclick = () => { if (open_) { unitOpen.delete(uk); unitClosed.add(uk); } else { unitClosed.delete(uk); unitOpen.add(uk); } renderSidebar(); };
+        ls.append(uh);
+        if (open_) ls.append(h('div', { class: 'unit-body' }, ...u.lessons.map((l) => row(l, c.lessons.indexOf(l)))));
+      });
+    } else c.lessons.forEach((l, j) => ls.append(row(l, j)));
     box.append(head, ls);
     return box;
   }
@@ -534,10 +711,10 @@
   function nextLesson() {
     if (state.current) {
       const c = courses.find((x) => x.id === state.current.course);
-      if (c) { const l = c.lessons.find((x) => !state.done[key(c.id, x.id)]); if (l) return { course: c, lesson: l }; }
+      if (c) { const l = c.lessons.find((x) => !x.optional && !state.done[key(c.id, x.id)]); if (l) return { course: c, lesson: l }; }
     }
     const pool = state.lang ? [...courses.filter((c) => c.lang === state.lang), ...courses] : courses;
-    for (const c of pool) { const l = c.lessons.find((x) => !state.done[key(c.id, x.id)]); if (l) return { course: c, lesson: l }; }
+    for (const c of pool) { const l = c.lessons.find((x) => !x.optional && !state.done[key(c.id, x.id)]); if (l) return { course: c, lesson: l }; }
     return null;
   }
 
@@ -565,7 +742,7 @@
       app.editor.onChange((id) => { if (S && id === tabId()) { updatePreview(); persistCodeDebounced(); } });
       render();
     },
-    open, close, check, renderSidebar, showBadges, showPicker, minutes, allLessons, nextLesson, badge, stat, addXP,
+    open, close, check, renderSidebar, showBadges, showPicker, minutes, allLessons, nextLesson, badge, stat, addXP, save, start, levelInfo, certificate, key, logDay,
     get active() { return !!S; },
     get state() { return state; },
   };
