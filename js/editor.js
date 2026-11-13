@@ -187,6 +187,9 @@
       insertSnippet(snippet) { const c = ed.getContribution('snippetController2'); if (c) c.insert(snippet); else api.insert(snippet); ed.focus(); },
       select(l1, c1, l2, c2) { ed.setSelection(new monaco.Range(l1, c1, l2, c2)); ed.revealRangeInCenterIfOutsideViewport(new monaco.Range(l1, c1, l2, c2)); ed.focus(); },
       reveal(line, col = 1) { ed.revealLineInCenter(line); ed.setPosition({ lineNumber: line, column: col }); ed.focus(); },
+      applyOp(id, from, to, text) { const m = models.get(id); if (!m) return; m.applyEdits([{ range: monaco.Range.fromPositions(m.getPositionAt(from), m.getPositionAt(to)), text, forceMoveMarkers: false }]); },
+      selOffsets() { const m = ed.getModel(); const s = ed.getSelection(); if (!m || !s) return null; return [m.getOffsetAt(s.getSelectionStart()), m.getOffsetAt(s.getPosition())]; },
+      offsetToLC(id, off) { const m = models.get(id); if (!m) return null; const p = m.getPositionAt(off); return { line: p.lineNumber, col: p.column }; },
       selection() { const m = ed.getModel(); const s = ed.getSelection(); return m && s ? m.getValueInRange(s) : ''; },
       command(name) {
         if (!ed.getModel()) return Q.toast('Open a file first.', 'info', 1500);

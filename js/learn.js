@@ -38,7 +38,8 @@
     ['streak-30', '🌞', 'Sun Never Sets', 'Learn 30 days in a row'],
     ['quiz-whiz', '🎯', 'Quiz Whiz', 'Answer 25 questions right on the first try'],
     ['first-try', '⚡', 'First Try', 'Pass 10 coding challenges on the first attempt'],
-    ['combo-8', '🔥', 'On Fire', 'Get 8 levels right first try in a row'],
+    ['combo-8', '👑', 'Combo King', 'Get 8 levels right first try in a row'],
+    ['speedster', '⚡', 'Speedster', 'Get 15 right in one speed round'],
     ['comeback', '🔁', 'Comeback Kid', 'Pass a challenge after 3 or more tries'],
     ['no-hints', '🥷', 'Ninja', 'Finish a coding lesson without hints or the solution'],
     ['game-dev', '🎮', 'Game Dev', 'Finish your first game development lesson'],
@@ -90,7 +91,7 @@
   function renderXP(bump) {
     const el = document.getElementById('xp'); if (!el) return;
     const L = levelInfo();
-    el.innerHTML = `${Q.ranks ? Q.ranks.badgeHtml(Q.ranks.current(), 18) : ''}<div class="xp-ring" style="--p:${L.pct}"><span>${L.lvl}</span></div><span class="xp-num">${state.xp} XP</span>${state.streak.count ? `<span class="xp-streak" title="Day streak">${icon('flame', 13)}${state.streak.count}</span>` : ''}`;
+    el.innerHTML = `${Q.ranks ? Q.ranks.badgeHtml(Q.ranks.current(), 18) : ''}<div class="xp-ring" style="--p:${L.pct}"><span>${L.lvl}</span></div><span class="xp-num">${state.xp} XP</span>${state.streak.count ? `<span class="xp-streak" title="${state.streak.count}-day streak${state.streak.freezes ? ` · 🧊 ${state.streak.freezes} streak freeze${state.streak.freezes > 1 ? 's' : ''}` : ' · keep it 7 days to earn a streak freeze'}">${icon('flame', 13)}${state.streak.count}</span>` : ''}`;
     el.title = `Level ${L.lvl} · ${titleFor(L.lvl)} — ${L.into}/${L.need} XP to next level`;
     el.onclick = () => Q.learn.showBadges();
     if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
@@ -125,14 +126,27 @@
     if (state.streak.last === t) return;
     const y = new Date(Date.now() - 864e5).toLocaleDateString('en-CA');
     state.streak.count = state.streak.last === y ? state.streak.count + 1 : 1;
-    state.streak.last = t; save();
+    state.streak.last = t;
+    // every 7 days of streak earns a freeze (hold up to 2): it saves the streak if you miss a day
+    if (state.streak.count % 7 === 0 && (state.streak.freezes || 0) < 2) { state.streak.freezes = (state.streak.freezes || 0) + 1; setTimeout(() => toast(`🧊 Streak freeze earned! If you miss a day, it saves your streak. (You have ${state.streak.freezes})`, 'xp', 4200), 800); }
+    save();
     if (state.streak.count >= 3) badge('streak-3');
     if (state.streak.count >= 7) badge('streak-7');
     if (state.streak.count >= 14) badge('streak-14');
     if (state.streak.count >= 30) badge('streak-30');
   }
   // expire a broken streak on load
-  (() => { const y = new Date(Date.now() - 864e5).toLocaleDateString('en-CA'); if (state.streak.last && state.streak.last !== today() && state.streak.last !== y) { state.streak.count = 0; save(); } })();
+  (() => {
+    const day = (n) => new Date(Date.now() - n * 864e5).toLocaleDateString('en-CA');
+    if (!state.streak.last || state.streak.last === today() || state.streak.last === day(1)) return;
+    if (state.streak.last === day(2) && (state.streak.freezes || 0) > 0 && state.streak.count) {
+      // missed exactly one day: use a freeze, pretend yesterday counted
+      state.streak.freezes--; state.streak.last = day(1); save();
+      setTimeout(() => toast(`🧊 You missed a day, so a streak freeze saved your ${state.streak.count}-day streak!`, 'xp', 5000), 2500);
+      return;
+    }
+    state.streak.count = 0; save();
+  })();
 
   /* ---------- Lesson session ---------- */
   let app = null;
@@ -170,6 +184,7 @@
     if (S && tabId() && app.virtuals.has(tabId())) { persistCode(); app.closeVirtual(tabId()); }
     S = { course, lesson, i: 0, attempts: 0, mistakes: 0, solved: {}, hint: 0, usedHints: false, started: Date.now(), stepStart: Date.now(), missed: new Set() };
     if (lesson.kind === 'challenge') S.limit = timeLimit(lesson);
+    if (lesson.kind === 'speed') { S.limit = 60; S.speedRight = 0; S.speedTotal = 0; }
     clearInterval(timerId); if (S.limit) timerId = setInterval(tickTimer, 1000);
     // resume on the exact level you were on (not for tests or timed challenges)
     const cur = state.current;
@@ -209,16 +224,25 @@
     const st = step();
     if (st && st.type === 'code' && st.starter != null && !st.keep && prev !== st) {
       // only replace code when the step brings new starter code and hasn't been solved before
-      if (!S.solved[S.i]) {
-        const b = st.starter.includes(BL) ? setupBlanks(st.starter) : null; const val = b ? b.code : st.starter;
-        clearBlanks(); S.blankText = val;
-        if (app.editor.has(tabId())) app.editor.set(tabId(), val); else app.openVirtual(tabId(), { title: `${S.lesson.title}.${S.course.ext}`, lang: S.course.lang, value: val });
-        if (b) { S.blanks = b.blanks; S.blankText = val; }
-      }
+      if (!S.solved[S.i]) loadStarter(st);
     } else if (prev !== st) clearBlanks();
     if (st && st.type === 'code' && app.virtuals.has(tabId())) app.activate(tabId());
     render();
     if (S.blanks) setTimeout(() => { paintBlanks(); focusBlank(0); }, 80);
+  }
+
+  function loadStarter(st) {
+    const b = st.starter.includes(BL) ? setupBlanks(st.starter) : null; const val = b ? b.code : st.starter;
+    clearBlanks(); S.blankText = val;
+    if (app.editor.has(tabId())) app.editor.set(tabId(), val); else app.openVirtual(tabId(), { title: `${S.lesson.title}.${S.course.ext}`, lang: S.course.lang, value: val });
+    if (b) { S.blanks = b.blanks; S.blankText = val; }
+  }
+  async function resetLevel() {
+    const st = step(); if (!S || !st || st.type !== 'code' || st.starter == null) return;
+    if (!(await Q.confirm('Start this level over?', 'Your code for this level will be replaced with the starting code.', false))) return;
+    loadStarter(st); app.activate(tabId());
+    if (S.blanks) setTimeout(() => { paintBlanks(); focusBlank(0); }, 60);
+    const fb = document.getElementById('lesson-fb'); if (fb && !S.solved[S.i]) fb.innerHTML = '';
   }
 
   /* ---------- Rendering ---------- */
@@ -230,9 +254,9 @@
     const { course, lesson } = S;
     const steps = lesson.steps;
     el.append(h('div', { class: 'lhead' },
-      h('div', { class: 'lcrumb', html: `<span class="fbadge" style="--c:${course.color}">${esc(course.badge)}</span>${esc(course.title)}${lesson.unit ? ` · Unit ${lesson.unit}` : ''}${lesson.temp ? '' : ` · ${course.lessons.indexOf(lesson) + 1} of ${course.lessons.length}`}${S.limit ? `<span class="ltimer" id="ltimer">${fmtTime(S.limit)}</span>` : ''}<span class="combo-chip" id="lcombo" style="${(S.combo || 0) >= 2 ? '' : 'display:none'}">🔥 ×${S.combo || 0}</span>` }),
-      h('div', { class: 'ltitle', text: lesson.title }),
-      h('div', { class: 'lsteps' }, ...steps.map((s, j) => h('div', { class: 'lstep' + (j < S.i || S.solved[j] ? ' done' : '') + (j === S.i ? ' on' : ''), title: `Step ${j + 1}`, onclick: () => (j <= S.i || S.solved[j - 1] || state.done[key(course.id, lesson.id)]) && go(j) })))));
+      h('div', { class: 'lcrumb', html: `<span class="fbadge" style="--c:${course.color}">${esc(course.badge)}</span>${esc(course.title)}${lesson.unit ? ` · Unit ${lesson.unit}` : ''}${lesson.temp ? '' : ` · ${course.lessons.indexOf(lesson) + 1} of ${course.lessons.length}`}${S.limit ? `<span class="ltimer" id="ltimer">${fmtTime(S.limit)}</span>` : ''}${lesson.kind === 'speed' ? `<span class="speed-chip" id="lspeed">${S.speedRight || 0} right</span>` : ''}<span class="combo-chip" id="lcombo" style="${(S.combo || 0) >= 2 ? '' : 'display:none'}">🔥 ×${S.combo || 0}</span>` }),
+      h('div', { class: 'ltitle' }, h('span', { text: lesson.title }), S.i < steps.length && steps[S.i].type === 'code' && steps[S.i].starter != null && !S.solved[S.i] ? h('button', { class: 'icon-btn sm lreport', title: 'Start this level over', 'aria-label': 'Start this level over', html: icon('refresh', 13), onclick: () => resetLevel() }) : '', S.i < steps.length && steps[S.i].type !== 'read' ? h('button', { class: 'icon-btn sm lreport', title: 'Something wrong with this level? Report it', 'aria-label': 'Report a problem with this level', html: icon('flag', 13), onclick: () => reportLevel() }) : ''),
+      lesson.kind === 'speed' ? '' : h('div', { class: 'lsteps' }, ...steps.map((s, j) => h('div', { class: 'lstep' + (j < S.i || S.solved[j] ? ' done' : '') + (j === S.i ? ' on' : ''), title: `Step ${j + 1}`, onclick: () => (j <= S.i || S.solved[j - 1] || state.done[key(course.id, lesson.id)]) && go(j) })))));
     const body = h('div', { class: 'lbody' });
     const foot = h('div', { class: 'lfoot' });
     el.append(body, foot);
@@ -294,11 +318,13 @@
           if (S.attempts === 0) { state.xp += 2; logDay(2); save(); renderXP(true); }
           noteResult(st, S.attempts === 0); Q.sound?.play('right'); combo(S.attempts === 0);
           stat('quizzes'); if (S.attempts === 0) stat('quizFirst');
+          speedNext(true);
         } else {
           b.classList.add('wrong'); b.disabled = true; S.attempts++; S.mistakes++; combo(false); S.missed.add(S.i);
           Q.mistakes?.note({ quiz: true }, S.course.lang);
           noteResult(st, false); requeue(st); Q.sound?.play('wrong');
           fb.innerHTML = ''; fb.append(h('div', { class: 'feedback bad', html: `${icon('close', 16)}<div><b>Not quite.</b> ${st.wrong?.[j] || 'Have another look and try again.'}</div>` }));
+          if (speedNext(false)) return;
           if (st.type === 'predict' && st.code && ['js', 'ts', 'py', 'web'].includes(S.course.run)) {
             const course = S.course;
             const tb = h('button', { class: 'btn ghost sm trace-btn', html: `${icon('play', 12)} Show me step by step`, onclick: async () => {
@@ -340,15 +366,28 @@
     combo(S.attempts === 0);
     fb.innerHTML = ''; fb.append(h('div', { class: 'feedback good', html: `${icon('check', 16)}<div><b>${pick(['Correct!', 'Nailed it!', 'Yes!', 'Spot on!', 'Exactly!'])}</b> ${msg || st.explain || ''}</div>` }));
     host().querySelectorAll('.lstep')[S.i]?.classList.add('done');
+    speedNext(true);
   }
   function markWrong(st, fb, msg, mistakeInfo) {
     S.attempts++; S.mistakes++; S.missed.add(S.i);
     noteResult(st, false); requeue(st); Q.sound?.play('wrong'); combo(false);
     Q.mistakes?.note(mistakeInfo || { quiz: true }, S.course.lang);
     fb.innerHTML = ''; fb.append(h('div', { class: 'feedback bad', html: `${icon('close', 16)}<div><b>${pick(['Not quite.', 'Not yet.', 'Close!'])}</b> ${msg || 'Have another look and try again.'}</div>` }));
+    speedNext(false);
   }
   const nextBtn = () => h('button', { class: 'btn primary', html: `Continue ${icon('arrowRight', 14)}`, disabled: !S.solved[S.i], onclick: () => go(S.i + 1) });
   const codeView = (code, onLine) => h('div', { class: 'lines-view' }, ...code.split('\n').map((l, i) => h(onLine ? 'button' : 'div', { class: 'lv-line', 'data-i': i, html: `<span class="lv-n">${i + 1}</span><code>${esc(l) || '&nbsp;'}</code>`, onclick: onLine ? () => onLine(i) : null })));
+
+  // hint button for the non-code level types: each click reveals the next hint (hidden in tests)
+  function hintButton(st, fb, hints) {
+    if (isTestLesson() || !hints.length) return '';
+    let k = 0;
+    return h('button', { class: 'btn ghost', html: `${icon('bulb', 14)} Hint`, title: 'Get a hint', onclick: (e) => {
+      const hi = hints[Math.min(k, hints.length - 1)]; k++; S.usedHints = true;
+      fb.innerHTML = ''; fb.append(h('div', { class: 'feedback hint', html: `${icon('bulb', 16)}<div><b>Hint ${Math.min(k, hints.length)}/${hints.length}:</b> ${hi}</div>` }));
+      if (k >= hints.length) e.currentTarget.disabled = true;
+    } });
+  }
 
   /* Arrange the lines: drag (or use the arrows) to put shuffled lines in order */
   function renderOrder(st, body, foot) {
@@ -359,9 +398,17 @@
     const draw = () => {
       list.innerHTML = '';
       S.order.lines.forEach((l, i) => {
-        const row = h('div', { class: 'order-row', draggable: !S.solved[S.i], 'data-i': i },
+        const row = h('div', { class: 'order-row', draggable: !S.solved[S.i], 'data-i': i, tabindex: 0, role: 'listitem', 'aria-label': `Line ${i + 1}: ${l.trim()}. Alt plus arrow keys to move.` },
           h('span', { class: 'or-grip', html: '⋮⋮' }), h('code', { text: l || ' ' }),
           h('span', { class: 'or-btns' }, h('button', { class: 'icon-btn sm', title: 'Move up', html: '↑', disabled: i === 0 || S.solved[S.i], onclick: () => move(i, i - 1) }), h('button', { class: 'icon-btn sm', title: 'Move down', html: '↓', disabled: i === S.order.lines.length - 1 || S.solved[S.i], onclick: () => move(i, i + 1) })));
+        row.addEventListener('keydown', (e) => {
+          if (S.solved[S.i]) return;
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault(); const d = e.key === 'ArrowUp' ? -1 : 1;
+            if (e.altKey || e.shiftKey) { if (i + d >= 0 && i + d < S.order.lines.length) { move(i, i + d); list.querySelectorAll('.order-row')[i + d]?.focus(); } }
+            else list.querySelectorAll('.order-row')[i + d]?.focus();
+          }
+        });
         row.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(i)); row.classList.add('drag'); });
         row.addEventListener('dragend', () => row.classList.remove('drag'));
         row.addEventListener('dragover', (e) => { e.preventDefault(); row.classList.add('over'); });
@@ -379,12 +426,15 @@
       const want = st.solution.replace(/\s+$/, '').split('\n').filter((l) => l.trim());
       let ok = S.order.lines.map((l) => l.trim()).join('\n') === want.map((l) => l.trim()).join('\n');
       if (!ok && st.check) { chk.disabled = true; try { const r = await runSnippet(st, code); ok = !r.errors.length && st.check(r, H) === true; } catch { ok = false; } chk.disabled = false; }
-      if (ok) { markRight(st, fb, next, 'The code is in the right order.'); chk.replaceWith(next); list.querySelectorAll('.order-row').forEach((r) => r.setAttribute('draggable', 'false')); return; }
+      if (ok) { stat('arranged'); markRight(st, fb, next, 'The code is in the right order.'); chk.replaceWith(next); list.querySelectorAll('.order-row').forEach((r) => r.setAttribute('draggable', 'false')); return; }
       // show which lines are in the right spot
       list.querySelectorAll('.order-row').forEach((r, i) => r.classList.toggle('wrongpos', (S.order.lines[i] || '').trim() !== (want[i] || '').trim()));
       markWrong(st, fb, 'Lines in red aren’t in the right place yet. Think about what has to exist <i>before</i> it’s used.', { msg: 'output' });
     } });
-    if (S.solved[S.i]) foot.append(h('div', { class: 'grow' }), next); else foot.append(h('div', { class: 'grow' }), chk);
+    const want0 = st.solution.replace(/\s+$/, '').split('\n').filter((l) => l.trim());
+    const hb = hintButton(st, fb, [`The first line is <code>${esc(want0[0].trim())}</code>.`, `The first two lines are <code>${esc(want0[0].trim())}</code> then <code>${esc((want0[1] || '').trim())}</code>.`, `The last line is <code>${esc(want0[want0.length - 1].trim())}</code>.`]);
+    if (S.solved[S.i]) foot.append(h('div', { class: 'grow' }), next); else foot.append(hb, h('div', { class: 'grow' }), chk);
+    if (!S.solved[S.i] && (state.stats?.arranged || 0) < 3) body.append(h('div', { class: 'kb-tip', html: 'Drag lines, use the arrows, or select a line and press <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>' }));
   }
 
   /* Click the buggy line */
@@ -402,7 +452,9 @@
     view = codeView(st.code, pickLine); view.classList.add('clickable');
     if (S.solved[S.i]) { view.querySelector(`[data-i="${st.bad}"]`)?.classList.add('right'); }
     body.append(view, fb);
-    foot.append(h('div', { class: 'grow' }));
+    const n = st.code.split('\n').length, other = st.bad + (st.bad + 1 < n ? 1 : -1);
+    const pair = [st.bad, other].sort((a, b) => a - b);
+    foot.append(S.solved[S.i] ? '' : hintButton(st, fb, [...(n > 3 ? [`Read the task again, then check each line against it. The bug is in line <b>${pair[0] + 1}</b> or <b>${pair[1] + 1}</b>.`] : ['Read each line out loud and ask: does this do what the task says? Watch spelling, quotes, brackets and types.']), `It’s line <b>${st.bad + 1}</b>. Click it to see the fix.`]), h('div', { class: 'grow' }));
     if (S.solved[S.i]) foot.append(next);
   }
 
@@ -422,8 +474,10 @@
     } });
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (!multi || e.ctrlKey)) { e.preventDefault(); (S.solved[S.i] ? next : chk).click(); } });
     body.append(input, h('div', { class: 'kb-tip', html: multi ? 'One line per printed line · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to check' : 'Press <kbd>Enter</kbd> to check' }), fb);
+    const ansLines = String(st.answer).split('\n');
+    const hb = hintButton(st, fb, [ansLines.length > 1 ? `It prints <b>${ansLines.length}</b> lines.` : `The output is <b>${String(st.answer).length}</b> character${String(st.answer).length === 1 ? '' : 's'} long.`, ansLines.length > 1 ? `The first line is <code>${esc(ansLines[0])}</code>.` : `It starts with <code>${esc(String(st.answer).slice(0, Math.max(1, Math.ceil(String(st.answer).length / 3))))}</code>…`]);
     if (S.solved[S.i]) { input.value = st.answer; input.disabled = true; foot.append(h('div', { class: 'grow' }), next); }
-    else { foot.append(h('div', { class: 'grow' }), chk); setTimeout(() => input.focus(), 60); }
+    else { foot.append(hb, h('div', { class: 'grow' }), chk); setTimeout(() => input.focus(), 60); }
   }
 
   /* True or false */
@@ -593,7 +647,10 @@
       focusBlank(0); return;
     }
     if (S.course.lang === 'cpp' && Q.raylib?.isRaylib(code)) inlineRaylib(code);
-    const btn = document.getElementById('lesson-check'); if (btn) { btn.disabled = true; btn.innerHTML = `<div class="spinner" style="width:14px;height:14px"></div> ${S.course.run === 'py' && Q.runner.pyState !== 'ready' ? 'Loading Python…' : 'Checking…'}`; }
+    const btn = document.getElementById('lesson-check'); if (btn) { btn.disabled = true; btn.innerHTML = `<div class="spinner" style="width:14px;height:14px"></div> <span class="cl-lab">${S.course.run === 'py' && Q.runner.pyState !== 'ready' ? 'Loading Python…' : 'Checking…'}</span>`; }
+    // first Python start can take a while: show how long it's been, so it doesn't look stuck
+    let pyTick = null;
+    if (btn && S.course.run === 'py' && Q.runner.pyState !== 'ready') { const t0 = Date.now(); pyTick = setInterval(() => { const lab = btn.querySelector('.cl-lab'); if (!lab || !btn.isConnected) return clearInterval(pyTick); const sec = Math.round((Date.now() - t0) / 1000); lab.textContent = Q.runner.pyState === 'ready' ? 'Checking…' : `Loading Python… ${sec}s${sec > 12 ? ' (first time is slow)' : ''}`; }, 1000); }
     const fb = document.getElementById('lesson-fb');
     const r = { code, logs: [], errors: [], out: '' };
     app.clearConsole();
@@ -650,6 +707,7 @@
         : 'Couldn’t run the check: ' + esc(e.message);
       fb.append(h('div', { class: 'feedback bad', html: `${icon('alert', 16)}<div>${why}</div>` }));
     } finally {
+      clearInterval(pyTick);
       if (S.course.run === 'web') { const f = document.getElementById('checkframe'); if (f) f.srcdoc = ''; } // stop the checked page's loops
       const b = document.getElementById('lesson-check'); if (b) { b.disabled = false; b.innerHTML = `${icon('play', 12)} Check <kbd style="background:transparent;border-color:#fff6;color:#fff">Ctrl ⏎</kbd>`; }
     }
@@ -673,6 +731,9 @@
   function renderDone(body, foot) {
     const { course, lesson } = S;
     clearInterval(timerId);
+    if (lesson.onDone) { lesson.onDone(body, foot, { attempts: S.mistakes, secs: Math.round((Date.now() - S.started) / 1000), close }); return; }
+    if (lesson.kind === 'speed') return renderSpeedDone(body, foot);
+    if (lesson.kind === 'daily') return renderDailyDone(body, foot);
     if (lesson.temp) return renderTempDone(body, foot);
     if (lesson.kind === 'test' || lesson.kind === 'testout') return renderTestDone(body, foot);
     if (lesson.kind === 'challenge') return renderChallengeDone(body, foot);
@@ -723,7 +784,7 @@
   /* ---------- generated levels: skills, retries, timers, tests ---------- */
   function noteResult(st, ok) { if (st.generated && !st.noted && S) { st.noted = true; Q.gen.record(S.course.id, st.tpl, ok); } }
   function requeue(st) {
-    if (!S || !st.generated || st.requeued || st.retry || ['test', 'testout', 'challenge'].includes(S.lesson.kind)) return;
+    if (!S || !st.generated || st.requeued || st.retry || ['test', 'testout', 'challenge', 'speed'].includes(S.lesson.kind)) return;
     st.requeued = true;
     const s = Q.gen.again(S.course.id, st); if (!s) return;
     S.lesson.steps.push(s);
@@ -740,6 +801,7 @@
   function tickTimer() {
     const el = document.getElementById('ltimer'); if (!S || !S.limit || !el) return;
     const left = S.limit - (Date.now() - S.started) / 1000;
+    if (S.lesson.kind === 'speed') { el.textContent = fmtTime(Math.max(0, left)); el.classList.toggle('low', left < 10); if (left <= 0 && S.i < S.lesson.steps.length) { clearInterval(timerId); go(S.lesson.steps.length); } return; }
     el.textContent = left > 0 ? fmtTime(left) : 'No star · keep going'; el.classList.toggle('over', left <= 0); el.classList.toggle('low', left > 0 && left < 30);
   }
   const levelIdx = () => S.lesson.steps.map((s, j) => (s.type === 'read' ? -1 : j)).filter((j) => j >= 0);
@@ -888,7 +950,7 @@
       h('div', { class: 'lh-top', html: `${Q.ranks ? Q.ranks.badgeHtml(Q.ranks.current(), 20) : ''}<span class="lvl">${esc(titleFor(L.lvl))}</span><span class="lt">Level ${L.lvl}</span><span class="lstreak">${icon('flame', 13)}${state.streak.count}</span>` }),
       h('div', { class: 'bar', html: `<i style="width:${L.pct}%"></i>` }),
       h('div', { class: 'stats', html: `<span>${L.into} / ${L.need} XP</span><span>${Object.keys(state.badges).length} of ${BADGES.length} badges</span>` }),
-      Q.progress ? h('div', { class: 'lh-links' }, h('button', { class: 'lh-link', html: `${icon('trophy', 12)} Stats`, onclick: () => Q.progress.showStats() }), h('button', { class: 'lh-link', html: `${icon('refresh', 12)} Refresher${Q.refresher.rustyCount() ? ` · ${Q.refresher.rustyCount()} rusty` : ''}`, onclick: () => Q.refresher.show({ manual: true }) })) : ''));
+      Q.progress ? h('div', { class: 'lh-links' }, h('button', { class: 'lh-link', html: `${icon('trophy', 12)} Stats`, onclick: () => Q.progress.showStats() }), h('button', { class: 'lh-link' + (dailyDone() ? ' done' : ''), html: `📅 Daily${dailyDone() ? ' ✓' : ''}`, title: dailyDone() ? 'Today’s challenge is done — come back tomorrow' : 'Today’s challenge: one level, +15 XP', onclick: () => dailyChallenge() }), h('button', { class: 'lh-link', html: '⚡ Speed', title: 'Speed round: 60 seconds of quick questions', onclick: () => speedRound() }), h('button', { class: 'lh-link', html: `${icon('refresh', 12)} Refresher${Q.refresher.rustyCount() ? ` · ${Q.refresher.rustyCount()} rusty` : ''}`, onclick: () => Q.refresher.show({ manual: true }) })) : ''));
     const lang = state.lang;
     if (!lang) {
       body.append(h('div', { class: 'pick-card' },
@@ -1035,6 +1097,95 @@
     if (!c || !l || state.done[key(c.id, l.id)]) return false;
     open(c.id, l.id, { force: true }); return true;
   }
+  /* 📅 daily challenge: one level a day from the course you're on */
+  const dailyDone = () => !!state.daily?.done?.[today()];
+  function dailyChallenge() {
+    const c = courses.find((x) => x.id === state.current?.course && Q.gen.packs[x.id]) || courses.find((x) => x.lang === state.lang && Q.gen.packs[x.id]) || courses.find((x) => Q.gen.packs[x.id]);
+    const all = Q.gen.packs[c.id].templates.filter((t) => t.kind !== 'quiz');
+    const done = c.lessons.map((l, i) => (state.done[key(c.id, l.id)] ? i : -1)).filter((i) => i >= 0);
+    let pool = all.filter((t) => (t.ai ?? 0) <= (done.length ? Math.max(...done) : 0));
+    if (pool.length < 4) pool = all.slice().sort((a, b) => (a.ai ?? 0) - (b.ai ?? 0)).slice(0, 8);
+    const seed = Q.gen.hash(today() + '/' + c.id);
+    const lv = Q.gen.levels(c.id, pool, 1, seed, { focusShare: 0, hard: true });
+    if (!lv.length) { toast('Do a few lessons first, then try the daily challenge.', 'info'); return; }
+    const d = state.daily || {};
+    const intro = { type: 'read', html: `<h4>📅 Daily challenge</h4><p>One level, picked for today from <b>${esc(c.title)}</b>. Solve it for <b>+15 XP</b> and keep your daily streak going.</p>${d.streak ? `<p class="muted">Daily streak: ${d.streak} day${d.streak > 1 ? 's' : ''}${dailyDone() ? ' · already done today — this one is just for fun' : ''}</p>` : ''}` };
+    start(c, { id: 'daily~' + today(), title: '📅 Daily challenge', temp: true, kind: 'daily', steps: [intro, ...lv] });
+    app.showView?.('learn');
+  }
+  function renderDailyDone(body, foot) {
+    const d = (state.daily = state.daily || { done: {}, streak: 0 }); d.done = d.done || {};
+    const first = !d.done[today()];
+    if (first) {
+      const y = new Date(Date.now() - 864e5).toLocaleDateString('en-CA');
+      d.streak = d.done[y] ? (d.streak || 0) + 1 : 1; d.done[today()] = true;
+      Object.keys(d.done).sort().slice(0, -60).forEach((k) => delete d.done[k]); // keep 2 months
+      addXP(15, 'daily challenge');
+    }
+    body.append(h('div', { class: 'done-card' }, h('div', { class: 'big', text: '📅' }), h('h3', { text: first ? 'Daily challenge done!' : 'Nice — done again!' }),
+      h('p', { text: `Daily streak: ${d.streak} day${d.streak > 1 ? 's' : ''}. Come back tomorrow for a new one.` })));
+    foot.append(h('div', { class: 'grow' }), h('button', { class: 'btn primary', text: 'Close', onclick: () => close() }));
+    renderSidebar();
+  }
+
+  /* ⚡ speed round: 60 seconds of quick reading levels (what prints? true or false? type the output) */
+  function speedNext(ok) {
+    if (!S || S.lesson.kind !== 'speed') return false;
+    S.speedTotal++; if (ok && S.attempts === 0) S.speedRight++;
+    S.solved[S.i] = true; const at = S.i;
+    if (S.i >= S.lesson.steps.length - 3 && S.lesson.pool) { const more = Q.gen.levels(S.course.id, S.lesson.pool, 20, Q.gen.freshSeed(), { kinds: ['predict', 'quiz', 'output'], focusShare: 0 }).filter((x) => x.type !== 'order' && x.type !== 'spot'); S.lesson.steps.push(...more); }
+    const sc = document.getElementById('lspeed'); if (sc) sc.textContent = `${S.speedRight} right`;
+    setTimeout(() => { if (S && S.i === at && S.lesson.kind === 'speed') go(S.i + 1); }, ok ? 450 : 1100);
+    return true;
+  }
+  function speedRound(courseId) {
+    const c = courses.find((x) => x.id === courseId) || courses.find((x) => x.id === state.current?.course && Q.gen.packs[x.id]) || courses.find((x) => x.lang === state.lang && Q.gen.packs[x.id]) || courses.find((x) => Q.gen.packs[x.id]);
+    const all = Q.gen.packs[c.id].templates.filter((t) => t.kind === 'predict' || t.kind === 'quiz');
+    const done = c.lessons.map((l, i) => (state.done[key(c.id, l.id)] ? i : -1)).filter((i) => i >= 0);
+    let pool = all.filter((t) => (t.ai ?? 0) <= (done.length ? Math.max(...done) : 0));
+    if (pool.length < 6) pool = all.slice().sort((a, b) => (a.ai ?? 0) - (b.ai ?? 0)).slice(0, 10);
+    const steps = Q.gen.levels(c.id, pool, 40, Q.gen.freshSeed(), { kinds: ['predict', 'quiz', 'output'], focusShare: 0 }).filter((x) => x.type !== 'order' && x.type !== 'spot');
+    if (!steps.length) { toast('Do a few lessons first, then try a speed round.', 'info'); return; }
+    start(c, { id: 'speed~' + c.id, title: '⚡ Speed round', temp: true, kind: 'speed', steps, pool });
+    app.showView?.('learn');
+  }
+  function renderSpeedDone(body, foot) {
+    const { course } = S; state.speedBest = state.speedBest || {};
+    const score = S.speedRight || 0, best = state.speedBest[course.id] || 0, record = score > best;
+    if (record) state.speedBest[course.id] = score;
+    if (score) addXP(score * 2, 'speed round'); else save();
+    if (score >= 15) badge('speedster');
+    body.append(h('div', { class: 'done-card' }, h('div', { class: 'big', text: record ? '🏆' : '⚡' }), h('h3', { text: record ? 'New best!' : 'Time’s up!' }),
+      h('p', { html: `<b style="font-size:28px">${score}</b> right out of ${S.speedTotal || 0} in 60 seconds` }),
+      h('p', { class: 'muted', text: record ? (best ? `Your old best was ${best}.` : 'That’s your first score — now beat it!') : `Your best in ${course.title}: ${best}.` })));
+    foot.append(h('div', { class: 'grow' }), h('button', { class: 'btn', text: 'Close', onclick: () => close() }), h('button', { class: 'btn primary', html: `Play again ${icon('refresh', 13)}`, onclick: () => speedRound(course.id) }));
+  }
+
+  /* report a broken level: saved locally, with everything needed to reproduce it */
+  async function reportLevel() {
+    if (!S) return;
+    const st = step(); if (!st) return;
+    const why = await Q.prompt('What’s wrong with this level?', '', 'e.g. my answer is right but it says wrong');
+    if (why == null) return;
+    const code = st.type === 'code' && app.editor.has(tabId()) ? app.editor.get(tabId()) : undefined;
+    const fb = document.getElementById('lesson-fb')?.innerText.trim().slice(0, 400);
+    const keep = (x) => (typeof x === 'string' ? x.slice(0, 2000) : x);
+    const r = { at: new Date().toISOString(), build: Q.notices?.BUILD, course: S.course.id, lesson: S.lesson.id, step: S.i, note: String(why).slice(0, 500),
+      level: { type: st.type, vkind: st.vkind, tpl: st.tpl, seed: st.seed, tag: st.tag, task: keep(st.task), q: keep(st.q), code: keep(st.code), starter: keep(st.starter), solution: keep(st.solution), lines: st.lines, answer: st.answer, options: st.options, claim: st.claim },
+      yourCode: keep(code), feedback: fb };
+    state.reports = (state.reports || []).slice(-49); state.reports.push(r); save();
+    toast('Thanks — saved. Find it in Stats → Level reports, then copy it to send.', 'info', 4200);
+  }
+  function showReports() {
+    const list = state.reports || [];
+    const text = JSON.stringify(list, null, 1);
+    const body = h('div', {}, h('p', { class: 'muted small', text: list.length ? `${list.length} report${list.length === 1 ? '' : 's'}. Copy them and paste them to whoever is fixing Codeditor.` : 'No reports yet. Use the ⚑ flag next to a level’s title if something seems wrong.' }),
+      ...list.slice(-8).reverse().map((r) => h('div', { class: 'rep-row', html: `<b>${esc(r.course)} · ${esc(r.lesson)}</b> <span class="muted small">step ${r.step + 1} · ${esc(new Date(r.at).toLocaleString())}</span><div>${esc(r.note || '(no note)')}</div>` })));
+    modal({ title: 'Level reports', body, buttons: [
+      ...(list.length ? [{ label: 'Clear all', onclick: () => { state.reports = []; save(); } }, { label: 'Copy all', primary: true, onclick: () => { app.copyText(text); toast('Copied!', 'info'); return false; } }] : []),
+      { label: 'Close' }] });
+  }
+
   /* practice built from your mistake heatmap: pick the language and mistake kinds you struggle with most */
   const CAT_KINDS = { typo: ['fix', 'fill2', 'fill', 'finish'], syntax: ['fix', 'spot', 'order'], types: ['fix', 'spot', 'typeout'], output: ['predict', 'typeout', 'tf'], offbyone: ['typeout', 'spot', 'tf'], reading: ['typeout', 'tf', 'order'], structure: ['write', 'fill2', 'order', 'finish'], loops: ['fix', 'spot'] };
   function practiceMistakes(lang) {
@@ -1058,14 +1209,14 @@
   }
 
   Q.learn = {
-    courses, H, renderXP, resume, practiceMistakes,
+    courses, H, renderXP, resume, practiceMistakes, showReports, reportLevel, speedRound, dailyChallenge, startCustom: (course, lesson) => { start(course, lesson); app.showView?.('learn'); },
     init(a) {
       app = a;
       renderXP();
       bus.on('virtual:run', (id) => { if (S && id === tabId()) { const st = step(); if (st?.type === 'code' && !S.solved[S.i]) check(); else runLessonCode(); } });
       bus.on('virtual:closed', (id) => { if (S && id === tabId()) { persistCode(); } });
       app.editor.onChange((id) => { if (S && id === tabId()) { if (S.blanks) trackBlanks(app.editor.get(id) || ''); updatePreview(); persistCodeDebounced(); } });
-      app.editor.onCursor((info) => { if (!S || info.id !== tabId()) return; const t = app.editor.get(tabId()) || ''; const ls = t.split('\n'); let off = 0; for (let k = 0; k < info.line - 1 && k < ls.length; k++) off += ls[k].length + 1; S.cursorOff = off + info.col - 1; });
+      app.editor.onCursor((info) => { if (!S || !S.blanks || info.id !== tabId()) return; const t = app.editor.get(tabId()) || ''; const ls = t.split('\n'); let off = 0; for (let k = 0; k < info.line - 1 && k < ls.length; k++) off += ls[k].length + 1; S.cursorOff = off + info.col - 1; });
       // Tab / Shift+Tab hop between fill-in boxes (capture phase, so the editor doesn't indent)
       addEventListener('keydown', (e) => {
         if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || !S || !S.blanks?.length || S.solved[S.i]) return;

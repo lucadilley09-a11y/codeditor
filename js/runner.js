@@ -103,7 +103,7 @@
     self.prompt = function (m) { var v = __stdin.length ? __stdin.shift() : null; __send('info', ['[prompt] ' + (m || '') + ' → ' + (v === null ? 'null (type input lines in the console Input box)' : v)]); return v; };
     self.addEventListener('unhandledrejection', function (e) { __send('error', ['Uncaught (in promise)', e.reason]); });
     onmessage = function (e) {
-      __stdin = e.data.stdin || []; __n = 0;
+      __stdin = e.data.stdin || []; __n = 0; __LIMIT = e.data.limit || 3000;
       try {
         (0, eval)(e.data.code + '\\n//# sourceURL=quill-user.js');
         postMessage({ type: 'sync-done' });
@@ -120,32 +120,36 @@
    * Run JS. onEvent receives {type, text, line}. Resolves with {logs, errors, timedOut}
    * settle: ms to wait for async output after the synchronous part finishes.
    */
-  function runJS(code, { onEvent, timeout = 0, settle = 350, stdin = [] } = {}) {
+  let jsCur = null;
+  const floodMsg = (n) => `TooMuchOutput: Your code printed more than ${n} lines, so it was stopped. Is there a loop that never ends?`;
+  function runJS(code, { onEvent, timeout = 0, settle = 350, stdin = [], limit = 3000 } = {}) {
     stopJS();
     return new Promise((resolve) => {
       const w = new Worker(jsWorkerUrl);
       jsWorker = w;
       const logs = [], errors = [];
       let done = false, settleTimer, hardTimer;
-      const finish = (timedOut) => {
+      const finish = (timedOut, stopped) => {
         if (done) return; done = true;
         clearTimeout(settleTimer); clearTimeout(hardTimer);
         if (timeout) { w.terminate(); if (jsWorker === w) jsWorker = null; }
-        resolve({ logs, errors, timedOut });
+        if (jsCur && jsCur.w === w) jsCur = null;
+        resolve({ logs, errors, timedOut, stopped: !!stopped });
       };
+      jsCur = { w, stop: () => { if (done) return; w.terminate(); if (jsWorker === w) jsWorker = null; finish(false, true); } };
       w.onmessage = (e) => {
         const d = e.data;
-        if (d.type === 'flood') { const x = { type: 'error', text: 'TooMuchOutput: Your code printed more than 3000 lines, so it was stopped. Is there a loop that never ends?', last: 'TooMuchOutput' }; errors.push(x); onEvent && onEvent(x); w.terminate(); if (jsWorker === w) jsWorker = null; done = true; clearTimeout(settleTimer); clearTimeout(hardTimer); resolve({ logs, errors, timedOut: true }); return; }
+        if (d.type === 'flood') { const x = { type: 'error', text: floodMsg(limit), last: 'TooMuchOutput' }; errors.push(x); onEvent && onEvent(x); w.terminate(); if (jsCur && jsCur.w === w) jsCur = null; if (jsWorker === w) jsWorker = null; done = true; clearTimeout(settleTimer); clearTimeout(hardTimer); resolve({ logs, errors, timedOut: true }); return; }
         if (d.type === 'sync-done') { if (timeout) settleTimer = setTimeout(() => finish(false), settle); else finish(false); return; }
         if (d.type === 'error') errors.push(d); else if (d.type !== 'clear') logs.push(d.text);
         onEvent && onEvent(d);
       };
       w.onerror = (e) => { const d = { type: 'error', text: e.message }; errors.push(d); onEvent && onEvent(d); e.preventDefault(); finish(false); };
       if (timeout) hardTimer = setTimeout(() => { const d = { type: 'error', text: 'TimeoutError: Your code ran for more than ' + timeout / 1000 + 's — is there an infinite loop?' }; errors.push(d); onEvent && onEvent(d); finish(true); }, timeout);
-      w.postMessage({ code, stdin });
+      w.postMessage({ code, stdin, limit });
     });
   }
-  function stopJS() { if (jsWorker) { jsWorker.terminate(); jsWorker = null; return true; } return false; }
+  function stopJS() { if (jsCur) { jsCur.stop(); return true; } if (jsWorker) { jsWorker.terminate(); jsWorker = null; return true; } return false; }
 
   /* ---------- Python via Pyodide in a Web Worker ---------- */
   const PY_WORKER = `
@@ -160,20 +164,20 @@
       }
       throw lastErr || new Error('Python could not be loaded');
     };
-    let py = null, stdin = [], outN = 0, outB = 0, pend = '', flooded = false; const dec = new TextDecoder();
+    let py = null, stdin = [], LIMIT = 3000, outN = 0, outB = 0, pend = '', flooded = false; const dec = new TextDecoder();
     const flood = () => { if (!flooded) { flooded = true; postMessage({ type: 'flood' }); } };
-    const emit = (t) => { if (++outN > 3000) { flood(); throw new Error('too much output'); } postMessage({ type: 'log', text: t }); };
+    const emit = (t) => { if (++outN > LIMIT) { flood(); throw new Error('too much output'); } postMessage({ type: 'log', text: t }); };
     const ready = (base ? load() : Promise.reject(new Error('Python could not be downloaded — check your internet connection.'))).then((p) => {
       py = p;
-      py.setStdout({ write: (buf) => { outB += buf.length; if (outB > 3000000) { flood(); throw new Error('too much output'); } pend += dec.decode(buf, { stream: true }); let i; while ((i = pend.indexOf('\\n')) >= 0) { emit(pend.slice(0, i)); pend = pend.slice(i + 1); } if (pend.length > 20000) { emit(pend.slice(0, 20000) + '… (cut)'); pend = ''; } return buf.length; } });
-      py.setStderr({ batched: (s) => { if (++outN > 3000) { flood(); throw new Error('too much output'); } postMessage({ type: 'warn', text: s }); } });
+      py.setStdout({ write: (buf) => { outB += buf.length; if (outB > LIMIT * 1000) { flood(); throw new Error('too much output'); } pend += dec.decode(buf, { stream: true }); let i; while ((i = pend.indexOf('\\n')) >= 0) { emit(pend.slice(0, i)); pend = pend.slice(i + 1); } if (pend.length > 20000) { emit(pend.slice(0, 20000) + '… (cut)'); pend = ''; } return buf.length; } });
+      py.setStderr({ batched: (s) => { if (++outN > LIMIT) { flood(); throw new Error('too much output'); } postMessage({ type: 'warn', text: s }); } });
       py.setStdin({ stdin: () => { if (stdin.length) { const v = stdin.shift(); postMessage({ type: 'info', text: '› ' + v }); return v; } postMessage({ type: 'warn', text: 'input() needs a value — type lines in the console Input box before running.' }); return ''; } });
       postMessage({ type: 'ready' });
     }).catch((e) => postMessage({ type: 'fatal', text: String(e) }));
     onmessage = async (e) => {
       await ready;
       if (!py) return postMessage({ type: 'done', failed: true });
-      stdin = e.data.stdin || []; outN = 0; outB = 0; pend = ''; flooded = false;
+      stdin = e.data.stdin || []; LIMIT = e.data.limit || 3000; outN = 0; outB = 0; pend = ''; flooded = false;
       const ns = py.globals.get('dict')();
       try {
         try { await py.loadPackagesFromImports(e.data.code, { messageCallback: (m) => postMessage({ type: 'info', text: m }) }); } catch (_) {}
@@ -249,25 +253,34 @@
     });
   }
 
-  async function runPython(code, { onEvent, timeout = 0, stdin = [] } = {}) {
+  let pyChain = Promise.resolve(), pyCur = null;
+  // one Python run at a time: a second run waits for the first instead of stealing its output
+  function runPython(code, opts = {}) {
+    const p = pyChain.then(() => runPython1(code, opts));
+    pyChain = p.catch(() => {});
+    return p;
+  }
+  async function runPython1(code, { onEvent, timeout = 0, stdin = [], limit = 3000 } = {}) {
     const ok = await pyReady();
     if (!ok) { const d = { type: 'error', text: 'Python could not load. It downloads from the internet the first time — check your connection and try again.' }; onEvent && onEvent(d); return { logs: [], errors: [d], unavailable: true }; }
     return new Promise((resolve) => {
       const logs = [], errors = []; let timer;
       const out = []; // stdout may arrive chunked by line
       pyListener = (d) => {
-        if (d.type === 'flood') { clearTimeout(timer); pyListener = null; if (pyWorker) { pyWorker.terminate(); pyWorker = null; pyState = 'idle'; Q.bus.emit('py:status', 'stopped'); } const x = { type: 'error', text: 'TooMuchOutput: Your code printed more than 3000 lines, so it was stopped. Is there a loop that never ends?', last: 'TooMuchOutput' }; errors.push(x); onEvent && onEvent(x); resolve({ logs: out, errors, timedOut: true }); return; }
-        if (d.type === 'done') { clearTimeout(timer); pyListener = null; resolve({ logs: out.join('\n').split('\n').filter((l, i, a) => !(i === a.length - 1 && l === '')), errors }); return; }
+        if (d.type === 'flood') { clearTimeout(timer); pyListener = null; if (pyWorker) { pyWorker.terminate(); pyWorker = null; pyState = 'idle'; Q.bus.emit('py:status', 'stopped'); } const x = { type: 'error', text: floodMsg(limit), last: 'TooMuchOutput' }; errors.push(x); onEvent && onEvent(x); pyCur = null; resolve({ logs: out, errors, timedOut: true }); return; }
+        if (d.type === 'done') { clearTimeout(timer); pyListener = null; pyCur = null; resolve({ logs: out.join('\n').split('\n').filter((l, i, a) => !(i === a.length - 1 && l === '')), errors }); return; }
         if (d.type === 'error') errors.push(d); else if (d.type === 'log') out.push(d.text);
         if (d.type !== 'error' || true) logs.push(d.text);
         onEvent && onEvent(d);
       };
-      if (timeout) timer = setTimeout(() => { stopPython(); const d = { type: 'error', text: 'TimeoutError: Your code ran for more than ' + timeout / 1000 + 's — is there an infinite loop?', last: 'TimeoutError' }; errors.push(d); onEvent && onEvent(d); resolve({ logs: out, errors, timedOut: true }); }, timeout);
-      pyWorker.postMessage({ code, stdin });
+      pyCur = { stop: (why) => { clearTimeout(timer); pyCur = null; if (why) { errors.push(why); onEvent && onEvent(why); } resolve({ logs: out, errors, timedOut: !!why, stopped: !why }); } };
+      if (timeout) timer = setTimeout(() => { const cur = pyCur; killPy(); cur && cur.stop({ type: 'error', text: 'TimeoutError: Your code ran for more than ' + timeout / 1000 + 's — is there an infinite loop?', last: 'TimeoutError' }); }, timeout);
+      pyWorker.postMessage({ code, stdin, limit });
     });
   }
+  function killPy() { if (pyWorker) pyWorker.terminate(); pyWorker = null; pyListener = null; pyState = 'idle'; Q.bus.emit('py:status', 'stopped'); }
   function stopPython() {
-    if (pyWorker && pyState === 'ready' && pyListener) { pyWorker.terminate(); pyWorker = null; pyListener = null; pyState = 'idle'; Q.bus.emit('py:status', 'stopped'); return true; }
+    if (pyWorker && pyState === 'ready' && pyListener) { const cur = pyCur; killPy(); cur && cur.stop(null); return true; }
     return false;
   }
 

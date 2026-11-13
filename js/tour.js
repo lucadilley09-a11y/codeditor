@@ -62,13 +62,14 @@
 /* ---------- "What's new" after an update + weekly backup reminder ---------- */
 (() => {
   const { h, store, icon } = Q;
-  const BUILD = '14';
+  const BUILD = '15';
   const NEW = [
-    ['No more white screen', 'Code that prints forever (or loops forever) is now stopped safely instead of crashing the page.'],
-    ['Python in downloaded copies', 'If the bundled Python can’t load, it now downloads Python automatically instead.'],
-    ['Fresh wording', 'Every level is asked in different ways, with little game settings like 🐉 Boss fight or 🛒 Shop menu.'],
-    ['More exercises', 'New exercise types for every skill in JavaScript, Python, C#, Lua and C++.'],
-    ['Finish the code', 'A new level type: the first lines are written, you finish the rest.'],
+    ['🎮 Game Studio', 'Draw and animate sprites in Pixel Studio, and design levels in Level Studio (the gamepad icon on the left).'],
+    ['📚 Library', 'Post your games, sprites and coding challenges — play, like and remix what others made (the book icon).'],
+    ['🏁 Game Jams', 'Start a jam with a theme and a deadline, submit games, then everyone votes.'],
+    ['👥 Live coding', 'Edit the same file with friends in real time — “👥 Live” in the bottom bar.'],
+    ['⚡ Speed round & 📅 Daily challenge', 'Quick-fire questions against the clock, and one fresh level every day (Learn sidebar).'],
+    ['Smaller things', 'Streak freezes 🧊, hints for every level type, ↺ start a level over, ⚑ report a broken level, and a theme that follows your device.'],
   ];
   function card(cls, title, body, actions) {
     document.querySelector('.notice.' + cls)?.remove();

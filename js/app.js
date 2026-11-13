@@ -8,6 +8,7 @@
   const DEFAULTS = { theme: 'quill-night', sound: true, soundPack: 'retro', fontSize: 14, tabSize: 2, wordWrap: false, lineNumbers: true, ligatures: true, autoClose: true, autocomplete: true, hover: true, livePreview: true, previewDelay: 350, tutorFollow: true, codeFont: 'JetBrains Mono', sidebarW: 260, rightW: 420, panelH: 200, hideSidebar: false, hideRight: true, hidePanel: false, view: 'files', rview: 'preview', confirmDelete: true };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
   settings.theme = Q.themes.get(settings.theme).id;
+  if (settings.autoTheme) settings.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'quill-night' : 'quill-day';
   const EMBED = (() => { try { return window.top !== window; } catch { return true; } })();
   // on the web link, saving files goes through the page's downloads capability (the viewer confirms each save)
   let saver = null;
@@ -78,7 +79,9 @@
     const thumb = h('span', { class: 'seg-thumb' });
     host.append(thumb);
     const btns = items.map(([key, html, title]) => { const b = h('button', { class: 'segb', 'data-k': key, html, title: title || '', onclick: () => onPick(key) }); host.append(b); return b; });
-    const place = () => { const on = btns.find((b) => b.classList.contains('on')); if (!on || !on.offsetWidth) return; thumb.style.width = on.offsetWidth + 'px'; thumb.style.transform = `translateX(${on.offsetLeft - 3}px)`; };
+    let queued = false;
+    const place = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; placeNow(); }); };
+    const placeNow = () => { const on = btns.find((b) => b.classList.contains('on')); if (!on || !on.offsetWidth) return; thumb.style.width = on.offsetWidth + 'px'; thumb.style.transform = `translateX(${on.offsetLeft - 3}px)`; };
     new ResizeObserver(place).observe(host);
     return { set(k) { btns.forEach((b) => b.classList.toggle('on', b.dataset.k === k)); place(); }, place };
   }
@@ -93,6 +96,8 @@
     acts.forEach(([v, ic, title]) => bar.append(h('button', { class: 'act', 'data-act': v, title, html: icon(ic, 22), onclick: () => showView(v, true) })));
     bar.append(h('div', { class: 'act-spacer' }));
     bar.append(h('button', { class: 'act', title: 'Keyboard shortcuts', html: icon('keyboard', 21), onclick: () => exec('help.keys') }));
+    bar.append(h('button', { class: 'act', 'data-act': 'library', title: 'Library — play, remix & post games · Game Jams', html: icon('book', 21), onclick: () => Q.library?.open() }));
+    bar.append(h('button', { class: 'act', 'data-act': 'studio', title: 'Game Studio — draw sprites & design levels', html: icon('gamepad', 22), onclick: () => Q.studio?.open() }));
     bar.append(h('button', { class: 'act', title: 'Toggle theme', html: icon('palette', 21), onclick: () => exec('theme.pick') }));
 
     // run + layout buttons
@@ -243,6 +248,7 @@
   function openFile(path, { line, col } = {}) {
     if (!fs.exists(path)) return;
     if (Q.assets?.isAsset(path) && Q.assets.isData(fs.read(path))) return Q.assets.viewer(path);
+    if (/\.level\.json$/.test(path) && Q.studio) return Q.studio.level({ path });
     if (!tabs().includes(path)) tabs().push(path);
     activate(path);
     if (line) setTimeout(() => editor.reveal(line, col || 1), 30);
@@ -642,8 +648,9 @@
       log('sys', `Running ${titleOf(id)}…`);
       setRunning(true);
       const t0 = performance.now();
-      const res = await Q.runner.runJS(js, { onEvent: (d) => { if (d.type === 'clear') return clearConsole(); log(d.type, d.text, { line: d.line, file: d.line ? id : null, lang }); if (d.type === 'error') { lastRunErrors.push({ id, line: d.line, msg: d.text }); updateProblems(); } }, stdin: stdinLines() });
+      const res = await Q.runner.runJS(js, { onEvent: (d) => { if (d.type === 'clear') return clearConsole(); log(d.type, d.text, { line: d.line, file: d.line ? id : null, lang }); if (d.type === 'error') { lastRunErrors.push({ id, line: d.line, msg: d.text }); updateProblems(); } }, stdin: stdinLines(), limit: 20000 });
       setRunning(false);
+      if (res.stopped) return;
       if (!res.errors.length) { log('sys', `Finished in ${Math.round(performance.now() - t0)} ms`); Q.journal?.noteSuccess({ where: id, code }); }
       else Q.journal?.noteError({ where: id, err: res.errors[0], code, lang, title: titleOf(id) });
       return;
@@ -653,12 +660,13 @@
       if (Q.runner.pyState !== 'ready') log('sys', 'Starting Python (downloads ~10 MB the first time)…');
       setRunning(true);
       const t0 = performance.now(); let started = false;
-      const res = await Q.runner.runPython(code, { stdin: stdinLines(), onEvent: (d) => {
+      const res = await Q.runner.runPython(code, { stdin: stdinLines(), limit: 20000, onEvent: (d) => {
         if (!started) { started = true; }
         log(d.type === 'warn' ? 'warn' : d.type, d.text, { line: d.line, file: d.line ? id : null, lang: 'python' });
         if (d.type === 'error') { lastRunErrors.push({ id, line: d.line, msg: d.last || d.text }); editor.setMarkers(id, d.line ? [{ line: d.line, msg: d.last || d.text }] : []); updateProblems(); }
       } });
       setRunning(false);
+      if (res.stopped) return;
       if (!res.errors.length) { editor.setMarkers(id, []); log('sys', `Finished in ${Math.round(performance.now() - t0)} ms`); Q.journal?.noteSuccess({ where: id, code }); }
       else Q.journal?.noteError({ where: id, err: res.errors[0], code, lang: 'python', title: titleOf(id) });
       return;
@@ -679,12 +687,13 @@
     L.append(h('button', { class: 'sbi', id: 'sb-problems', title: 'Problems', onclick: () => showPanel('problems') }));
     L.append(h('button', { class: 'sbi', id: 'sb-py', title: 'Python runtime (click for a check-up)', html: '<i class="pydot"></i>Python', onclick: () => { showPanel('console'); Q.runner.pyDiag((t) => log('sys', t)); } }));
     L.append(h('span', { class: 'sbi', id: 'sb-engine', title: '' }));
-    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 14', style: { opacity: '.55' } }));
+    L.append(h('span', { class: 'sbi', id: 'sb-build', title: 'Codeditor version', text: 'build 15', style: { opacity: '.55' } }));
     R.append(h('div', { id: 'sb-ext', style: { display: 'flex', height: '100%' } }));
     R.append(h('button', { class: 'sbi', id: 'sb-pos', title: 'Go to line (Ctrl+G)', onclick: () => exec('edit.gotoLine') }));
     R.append(h('button', { class: 'sbi', id: 'sb-tab', title: 'Indentation', onclick: () => exec('settings.tabSize') }));
     R.append(h('span', { class: 'sbi', text: 'UTF-8' }));
     R.append(h('button', { class: 'sbi', id: 'sb-lang', title: 'Change language mode', onclick: () => exec('lang.pick') }));
+    R.append(h('button', { class: 'sbi', id: 'sb-live', title: 'Live coding — edit a file together with friends', html: '👥 Live', onclick: (e) => { if (Q.live?.session) return Q.live.start(); const r = e.currentTarget.getBoundingClientRect(); contextMenu(r.left, r.top - 70, [{ label: 'Start a session with this file', action: () => Q.live.start() }, { label: 'Join with a room code…', action: () => Q.live.join() }]); } }));
     R.append(h('button', { class: 'sbi', id: 'sb-theme', title: 'Change theme', html: icon('palette', 13), onclick: () => exec('theme.pick') }));
     updateStatus();
   }
@@ -846,6 +855,15 @@
       h('div', { class: 'set' }, h('button', { class: 'btn ghost', text: 'Reset settings to defaults', onclick: async () => { if (await confirm('Reset settings?', 'Your files and progress stay. Only settings change.', false)) { Object.assign(settings, DEFAULTS); applySettings(); setTheme(DEFAULTS.theme); renderSettings(); } } }))));
   }
   function applySettings() { saveSettings(); editor.applySettings(editorOpts()); updateStatus(); }
+  // "Match system": follow the device's dark/light setting
+  const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+  function followSystem(announce) {
+    if (!settings.autoTheme) return;
+    const id = darkMQ.matches ? 'quill-night' : 'quill-day';
+    if (id !== settings.theme) { settings.theme = id; saveSettings(); const t = Q.themes.get(id); Q.themes.applyCss(t); editor?.setTheme?.(id); }
+    if (announce) toast(`Theme follows your system (${darkMQ.matches ? 'dark' : 'light'} right now)`, 'info', 1600);
+  }
+  darkMQ.addEventListener?.('change', () => followSystem(false));
   function setTheme(id) { if (id !== settings.theme && !Q.themes.isUnlocked(id)) { const t = Q.themes.get(id); return toast(`<b>${esc(t.name)}</b> unlocks at rank <b>${esc(Q.ranks.list[t.rank].name)}</b>.`, 'info', 2200); } if (id !== settings.theme) Q.learn?.badge('stylist'); settings.theme = id; saveSettings(); const t = Q.themes.get(id); Q.themes.applyCss(t); editor.setTheme(id); toast(`Theme: ${t.name}`, 'info', 1200); }
 
   /* ===================== Resizers ===================== */
@@ -1068,7 +1086,7 @@
     bus.on('zoom', (d) => exec(d > 0 ? 'zoom.in' : 'zoom.out'));
     cmd('theme.pick', 'Change color theme…', 'View', () => {
       const b = $('#sb-theme').getBoundingClientRect();
-      contextMenu(b.left - 150, b.top - 8 - Q.themes.list.length * 30, Q.themes.list.map((t) => ({ label: (t.id === settings.theme ? '✓ ' : '   ') + t.name + (Q.themes.isUnlocked(t.id) ? '' : ' 🔒'), action: () => setTheme(t.id) })));
+      contextMenu(b.left - 150, b.top - 8 - (Q.themes.list.length + 2) * 30, [{ label: (settings.autoTheme ? '✓ ' : '   ') + 'Match system (dark/light)', action: () => { settings.autoTheme = true; saveSettings(); followSystem(true); } }, '-', ...Q.themes.list.map((t) => ({ label: (!settings.autoTheme && t.id === settings.theme ? '✓ ' : '   ') + t.name + (Q.themes.isUnlocked(t.id) ? '' : ' 🔒'), action: () => { settings.autoTheme = false; setTheme(t.id); } }))]);
     }, 'Ctrl+K Ctrl+T');
     Q.themes.list.forEach((t) => cmd('theme.' + t.id, t.name, 'Theme', () => setTheme(t.id)));
     cmd('lang.pick', 'Change language mode…', 'Edit', () => {
@@ -1082,11 +1100,19 @@
     cmd('run.run', 'Run current file', 'Run', runActiveFile, 'Ctrl+Enter');
     cmd('run.stop', 'Stop running code', 'Run', () => { if (Q.runner.stop()) log('sys', 'Stopped.'); setRunning(false); });
     cmd('preview.refresh', 'Refresh preview', 'Run', () => { showRight('preview'); refreshPreview(true); });
-    cmd('preview.newTab', 'Open preview in new tab', 'Run', () => { const entry = pickEntry(); if (!entry) return toast('No HTML page to open.', 'info'); const read = (p) => (editor.has(p) ? editor.get(p) : fs.read(p)); const url = URL.createObjectURL(new Blob([Q.runner.buildPage(entry, read, { hook: false })], { type: 'text/html' })); window.open(url, '_blank'); });
+    cmd('preview.newTab', 'Open preview in new tab', 'Run', () => { const entry = pickEntry(); if (!entry) return toast('No HTML page to open.', 'info'); const read = (p) => (editor.has(p) ? editor.get(p) : fs.read(p)); const inner = Q.runner.buildPage(entry, read, { hook: false }); const wrap = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(entry)}</title><style>html,body{margin:0;height:100%;background:#111}iframe{border:0;width:100%;height:100%;display:block}</style></head><body><iframe sandbox="allow-scripts allow-modals allow-forms allow-pointer-lock" srcdoc="${inner.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></iframe></body></html>`; const url = URL.createObjectURL(new Blob([wrap], { type: 'text/html' })); window.open(url, '_blank'); });
     cmd('console.clear', 'Clear console', 'Run', clearConsole, 'Ctrl+Shift+L');
     cmd('learn.open', 'Open courses', 'Learn', () => showView('learn'));
     cmd('learn.refresh', 'Quick refresher', 'Learn', () => Q.refresher.show({ manual: true }));
     cmd('learn.stats', 'Your stats', 'Learn', () => Q.progress.showStats());
+    cmd('studio.open', '🎮 Game Studio', 'Create', () => Q.studio.open());
+    cmd('library.open', '📚 Library — play, remix & post', 'Create', () => Q.library.open());
+    cmd('library.jams', '🏁 Game Jams', 'Create', () => Q.library.open('jam'));
+    cmd('live.start', '👥 Start live coding with this file', 'Create', () => Q.live.start());
+    cmd('live.join', '👥 Join a live coding session…', 'Create', () => Q.live.join());
+    cmd('studio.pixel', '🎨 Pixel Studio — draw a sprite', 'Create', () => Q.studio.pixel());
+    cmd('studio.level', '🗺️ Level Studio — design a level', 'Create', () => Q.studio.level());
+    cmd('learn.speed', '⚡ Speed round (60 seconds)', 'Learn', () => Q.learn.speedRound());
     cmd('learn.continue', 'Continue next lesson', 'Learn', () => { const n = Q.learn.nextLesson(); if (n) Q.learn.open(n.course.id, n.lesson.id); else toast('You finished every lesson! 🏆', 'success'); });
     cmd('learn.badges', 'Badges & progress', 'Learn', () => Q.learn.showBadges());
     cmd('tutor.open', 'Open live Tutor', 'Learn', () => showRight('tutor'));

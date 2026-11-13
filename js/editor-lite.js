@@ -418,6 +418,13 @@
         if (id === activeId) { if (ta.value === value) return; const s = ta.selectionStart; ta.focus(); ta.select(); ins(value); const p = Math.min(s, value.length); ta.setSelectionRange(p, p); return; }
         d.value = value; changeFns.forEach((f) => f(id, value));
       },
+      applyOp(id, from, to, text) {
+        const d = docs.get(id); if (!d) return;
+        if (id === activeId) { ta.setRangeText(text, from, to, 'preserve'); d.value = ta.value; paint(); changeFns.forEach((f) => f(id, ta.value)); return; }
+        d.value = d.value.slice(0, from) + text + d.value.slice(to); changeFns.forEach((f) => f(id, d.value));
+      },
+      selOffsets() { return activeId ? [ta.selectionStart, ta.selectionEnd] : null; },
+      offsetToLC(id, off) { const d = docs.get(id); if (!d) return null; const pre = d.value.slice(0, off); const line = pre.split('\n').length; return { line, col: off - pre.lastIndexOf('\n') }; },
       close(id) { docs.delete(id); if (activeId === id) api.showNothing(); },
       rename(from, to, langId) { const d = docs.get(from); if (!d) return; docs.delete(from); d.lang = langId; docs.set(to, d); if (activeId === from) { activeId = to; hl = highlighter(langId); paint(); } },
       setLang(id, langId) { const d = docs.get(id); if (d) { d.lang = langId; if (id === activeId) { hl = highlighter(langId); paint(); fireCursor(); } } },

@@ -102,9 +102,9 @@
     const imgPrev = (src) => h('div', { class: 'as-img' }, h('img', { src, alt: '' }));
     const sndPrev = (src) => h('button', { class: 'as-img as-snd', title: 'Play', html: icon('play', 18), onclick: () => playData(src) });
 
-    body.append(h('h5', { text: 'Sprites' }));
+    body.append(h('div', { class: 'as-h' }, h('h5', { text: 'Sprites' }), Q.studio ? h('button', { class: 'btn sm', html: '🎨 Draw your own', onclick: () => Q.studio.pixel() }) : ''));
     const sg = h('div', { class: 'as-grid' });
-    Object.keys(SPRITES).forEach((n) => { const url = spriteURL(n); sg.append(card(n, imgPrev(url), () => addToProject(n + '.png', url))); });
+    Object.keys(SPRITES).forEach((n) => { const url = spriteURL(n); sg.append(card(n, imgPrev(url), () => addToProject(n + '.png', url), Q.studio ? h('button', { class: 'icon-btn sm', title: 'Edit a copy in Pixel Studio', html: '🎨', onclick: () => Q.studio.pixel({ data: url, name: n }) }) : '')); });
     body.append(sg, h('h5', { text: 'Sounds' }));
     const ag = h('div', { class: 'as-grid' });
     Object.keys(SOUNDS).forEach((n) => { let url; const get = () => (url = url || soundURL(n)); ag.append(card(n, h('button', { class: 'as-img as-snd', title: 'Play', html: icon('play', 18), onclick: () => playData(get()) }), () => addToProject(n + '.wav', get()))); });
@@ -133,7 +133,7 @@
     const data = Q.fs.read(path);
     const prev = kindOf(path) === 'sound' ? h('audio', { controls: true, src: data }) : h('img', { class: 'as-view', src: data, alt: path });
     const code = h('pre', { class: 'as-code', text: usage(path) });
-    Q.modal({ title: path, body: h('div', { class: 'as-viewer' }, prev, h('p', { class: 'muted small', text: 'Use it in your game:' }), code), buttons: [{ label: 'Copy code', onclick: () => { Q.app.copyText(usage(path), 'Code copied'); return false; } }, { label: 'Close', primary: true }] });
+    Q.modal({ title: path, body: h('div', { class: 'as-viewer' }, prev, h('p', { class: 'muted small', text: 'Use it in your game:' }), code), buttons: [...(kindOf(path) === 'image' && Q.studio ? [{ label: '🎨 Edit in Pixel Studio', onclick: () => { Q.studio.pixel({ path }); } }] : []), { label: 'Copy code', onclick: () => { Q.app.copyText(usage(path), 'Code copied'); return false; } }, { label: 'Close', primary: true }] });
   }
 
   /* ---------- preview support: map asset paths to their data ---------- */
@@ -157,5 +157,5 @@ var of=window.fetch;window.fetch=function(u,o){return of.call(this,r(u),o);};
     return html.replace(/\b(src|href)=(["'])([^"']+)\2/gi, (m, attr, q, u) => { const p = Q.fs.resolve(entry, u); return p && map[p] ? `${attr}=${q}${map[p]}${q}` : m; });
   }
 
-  Q.assets = { library, viewer, isAsset, isData, previewScript, rewriteHTML, readUpload, spriteURL, soundURL, SPRITES, SOUNDS };
+  Q.assets = { library, viewer, isAsset, isData, previewScript, rewriteHTML, readUpload, spriteURL, soundURL, SPRITES, SOUNDS, mine, saveMine, safe, kindOf, usage };
 })();

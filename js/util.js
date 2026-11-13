@@ -74,6 +74,8 @@ Q.APP = 'Codeditor'; // the app's name — change it here
     arrowLeft: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
     trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
     alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+    gamepad: '<path d="M6 11h4M8 9v4"/><path d="M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6L2 15a2.8 2.8 0 0 0 5 1.8L8.5 15h7l1.5 1.8A2.8 2.8 0 0 0 22 15l-.7-6.4a4 4 0 0 0-4-3.6z"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
     project: '<path d="M3 6h7l2 2h9v11H3z"/>',
     split: '<rect x="3" y="4" width="18" height="16"/><path d="M12 4v16"/>',
@@ -259,14 +261,25 @@ Q.APP = 'Codeditor'; // the app's name — change it here
   }
 
   /* merge progress from another copy into ours: never lose done lessons, XP, badges or stats */
-  function mergeProgress(a, b) {
+  // keys where "max / union" is wrong: lists we trim or clear, and streaks that can reset
+  const OURS = new Set(['recentLv', 'reports']);
+  const lastDay = (o) => (o && typeof o === 'object' ? (o.last || Object.keys(o.done || {}).sort().pop() || '') : '');
+  function mergeProgress(a, b, top = true) {
     if (!b || typeof b !== 'object') return a;
     for (const k of Object.keys(b)) {
       const x = a[k], y = b[k];
+      if (top && OURS.has(k) && k in a) continue;
+      if (top && (k === 'streak' || k === 'daily') && x && y) {
+        // the copy that was updated on the latest day wins (so a broken streak really resets)
+        const lx = lastDay(x), ly = lastDay(y);
+        if (k === 'daily') { x.done = Object.assign({}, y.done || {}, x.done || {}); if (ly > lx) x.streak = y.streak; }
+        else if (ly > lx) a[k] = y;
+        continue;
+      }
       if (!(k in a)) a[k] = y;
       else if (typeof x === 'number' && typeof y === 'number') a[k] = Math.max(x, y);
       else if (Array.isArray(x) && Array.isArray(y)) { const seen = new Set(x.map((v) => JSON.stringify(v))); y.forEach((v) => { if (!seen.has(JSON.stringify(v))) x.push(v); }); }
-      else if (x && y && typeof x === 'object' && typeof y === 'object') mergeProgress(x, y);
+      else if (x && y && typeof x === 'object' && typeof y === 'object') mergeProgress(x, y, false);
       else if (typeof x === 'string' && typeof y === 'string' && /^\d{4}-\d\d-\d\d/.test(x) && /^\d{4}-\d\d-\d\d/.test(y) && y > x) a[k] = y;
     }
     return a;

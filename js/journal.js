@@ -132,7 +132,7 @@
     if (quiz) return 'reading';
     const t = String(err?.text || err?.last || '');
     if (t) {
-      if (/Timeout|infinite loop|took too long/i.test(t)) return 'loops';
+      if (/Timeout|infinite loop|took too long|TooMuchOutput/i.test(t)) return 'loops';
       if (/NameError|ReferenceError|is not defined|has no attribute|undefined (variable|method)|Cannot find name/i.test(t)) return 'typo';
       if (/SyntaxError|IndentationError|Unexpected (token|identifier|end)|unterminated|missing \)|EOL|invalid syntax|expected/i.test(t)) return 'syntax';
       if (/TypeError|is not a function|can only concatenate|unsupported operand|ValueError|not iterable/i.test(t)) return 'types';
