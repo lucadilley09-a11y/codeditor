@@ -348,8 +348,18 @@
 
   /* keyboard: 1–4 (or A–D) answer quizzes, Enter continues — never while typing */
   addEventListener('keydown', (e) => {
-    if (!S || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('.modal-back')) return;
-    const t = e.target; if (t && t.closest && t.closest('input, textarea, select, [contenteditable], .monaco-editor, .cm-editor, #editor')) return;
+    if (!S || document.querySelector('.modal-back')) return;
+    const t = e.target;
+    // Ctrl+Enter: check the level, or go to the next one once it's done (inside the editor this comes through 'virtual:run')
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.altKey) {
+      if (t && t.closest && t.closest('.monaco-editor, .cm-editor, #editor')) return;
+      const h1 = host(); if (!h1 || !h1.offsetParent) return;
+      const b = h1.querySelector('.lfoot .btn.good:not(:disabled), .lfoot .btn.primary:not(:disabled)');
+      if (b) { e.preventDefault(); b.click(); }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (t && t.closest && t.closest('input, textarea, select, [contenteditable], .monaco-editor, .cm-editor, #editor')) return;
     const h0 = host(); if (!h0 || !h0.offsetParent) return;
     const opts = [...h0.querySelectorAll('.qopt')];
     const k = e.key.toLowerCase(); const n = '1234'.indexOf(k) >= 0 ? '1234'.indexOf(k) : 'abcd'.indexOf(k);
@@ -608,7 +618,7 @@
       clearBlanks(); app.editor.set(tabId(), st.solution); app.activate(tabId()); S.mistakes++; S.usedSolution = true;
     } });
     const checkBtn = h('button', { class: 'btn primary', id: 'lesson-check', html: `${icon('play', 12)} Check <kbd style="background:transparent;border-color:#fff6;color:#fff">Ctrl ⏎</kbd>`, onclick: () => check() });
-    const nextBtn = h('button', { class: 'btn good', html: `Continue ${icon('arrowRight', 14)}`, onclick: () => go(S.i + 1) });
+    const nextBtn = h('button', { class: 'btn good', html: `Continue ${icon('arrowRight', 14)} <kbd style="background:transparent;border-color:#fff6;color:inherit">Ctrl ⏎</kbd>`, title: 'Next level (Ctrl+Enter)', onclick: () => go(S.i + 1) });
     const locked = S.lesson.kind === 'challenge' && S.attempts < 3 && !S.solved[S.i];
     if (locked) { hintBtn.style.display = solBtn.style.display = 'none'; foot.append(h('span', { class: 'muted small', id: 'help-locked', text: 'Hints unlock after 3 tries' })); }
     hintBtn.id = 'lesson-hint'; solBtn.id = 'lesson-sol';
@@ -1213,7 +1223,7 @@
     init(a) {
       app = a;
       renderXP();
-      bus.on('virtual:run', (id) => { if (S && id === tabId()) { const st = step(); if (st?.type === 'code' && !S.solved[S.i]) check(); else runLessonCode(); } });
+      bus.on('virtual:run', (id) => { if (S && id === tabId()) { const st = step(); if (st?.type === 'code' && !S.solved[S.i]) check(); else if (S.solved[S.i] || !st || st.type !== 'code') go(S.i + 1); else runLessonCode(); } });
       bus.on('virtual:closed', (id) => { if (S && id === tabId()) { persistCode(); } });
       app.editor.onChange((id) => { if (S && id === tabId()) { if (S.blanks) trackBlanks(app.editor.get(id) || ''); updatePreview(); persistCodeDebounced(); } });
       app.editor.onCursor((info) => { if (!S || !S.blanks || info.id !== tabId()) return; const t = app.editor.get(tabId()) || ''; const ls = t.split('\n'); let off = 0; for (let k = 0; k < info.line - 1 && k < ls.length; k++) off += ls[k].length + 1; S.cursorOff = off + info.col - 1; });

@@ -62,14 +62,10 @@
 /* ---------- "What's new" after an update + weekly backup reminder ---------- */
 (() => {
   const { h, store, icon } = Q;
-  const BUILD = '15';
+  const BUILD = '16';
   const NEW = [
-    ['🎮 Game Studio', 'Draw and animate sprites in Pixel Studio, and design levels in Level Studio (the gamepad icon on the left).'],
-    ['📚 Library', 'Post your games, sprites and coding challenges — play, like and remix what others made (the book icon).'],
-    ['🏁 Game Jams', 'Start a jam with a theme and a deadline, submit games, then everyone votes.'],
-    ['👥 Live coding', 'Edit the same file with friends in real time — “👥 Live” in the bottom bar.'],
-    ['⚡ Speed round & 📅 Daily challenge', 'Quick-fire questions against the clock, and one fresh level every day (Learn sidebar).'],
-    ['Smaller things', 'Streak freezes 🧊, hints for every level type, ↺ start a level over, ⚑ report a broken level, and a theme that follows your device.'],
+    ['Fairer fill-in boxes', 'A box never asks for a word or number the task doesn’t tell you.'],
+    ['Ctrl+Enter to continue', 'Ctrl+Enter now checks a level, and pressing it again goes to the next one — even from the editor.'],
   ];
   function card(cls, title, body, actions) {
     document.querySelector('.notice.' + cls)?.remove();

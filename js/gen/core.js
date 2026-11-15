@@ -196,7 +196,17 @@
     if (vk === 'fill2' && step.type === 'code' && step.solution) {
       const lines = step.solution.split('\n');
       const cands = [];
-      lines.forEach((l, i) => { if (!l.trim() || /^\s*(\/\/|#|--|<!--)/.test(l)) return; const re = /"[^"\n]{1,24}"|'[^'\n]{1,24}'|\b\d+(?:\.\d+)?\b|[A-Za-z_][\w]*(?=\s*\()|[A-Za-z_]\w{1,}/g; let m; const here = []; while ((m = re.exec(l))) { const t = m[0]; if (KW.has(t) || t.length > 26) continue; here.push({ i, at: m.index, t }); } if (here.length) cands.push(g.pick(here)); });
+      // only blank something the player can work out: a value written in the task, or a name used elsewhere in the code
+      const taskText = String(step.task || '').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&rsquo;|’/g, "'");
+      const lower = taskText.toLowerCase();
+      const count = (t) => { let n = 0, k = -1; while ((k = step.solution.indexOf(t, k + 1)) >= 0) n++; return n; };
+      const deducible = (t, l, at) => {
+        if (/^["']/.test(t)) { const inner = t.slice(1, -1); return (inner.trim() && lower.includes(inner.toLowerCase())) || count(t) > 1; }
+        if (/^\d/.test(t)) return new RegExp('(^|[^\\d.])' + t.replace('.', '\\.') + '(?![\\d])').test(taskText) || count(t) > 1;
+        if (/^\s*\(/.test(l.slice(at + t.length))) return true; // a function or method being called: part of the skill
+        return new RegExp('\\b' + t + '\\b').test(taskText) || (step.solution.match(new RegExp('\\b' + t + '\\b', 'g')) || []).length > 1;
+      };
+      lines.forEach((l, i) => { if (!l.trim() || /^\s*(\/\/|#|--|<!--)/.test(l)) return; const re = /"[^"\n]{1,24}"|'[^'\n]{1,24}'|\b\d+(?:\.\d+)?\b|[A-Za-z_][\w]*(?=\s*\()|[A-Za-z_]\w{1,}/g; let m; const here = []; while ((m = re.exec(l))) { const t = m[0]; if (KW.has(t) || t.length > 26) continue; if (!deducible(t, l, m.index)) continue; here.push({ i, at: m.index, t }); } if (here.length) cands.push(g.pick(here)); });
       if (cands.length < 2) return null;
       const pick = g.shuffle(cands).slice(0, Math.min(3, cands.length)).sort((a, b) => a.i - b.i);
       const out = lines.slice(); const answers = [];
